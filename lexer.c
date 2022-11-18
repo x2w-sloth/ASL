@@ -25,7 +25,7 @@ tokenize(const char *c)
             c += tok->len;
             continue;
         }
-        if (*c == '+' || *c == '-')
+        if (ispunct(*c))
         {
             tok = tok->next = new_token(TT_PUNC);
             tok->len = 1;

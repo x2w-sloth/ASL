@@ -46,6 +46,12 @@ gen_expr(Node *node)
         case NT_SUB:
             println("  sub  rax, rdi");
             break;
+        case NT_MUL:
+            println("  imul rdi");
+            break;
+        case NT_DIV:
+            println("  idiv rdi");
+            break;
         default:
             die("bad expr node %d", node->type);
     }

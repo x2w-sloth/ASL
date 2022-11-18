@@ -30,6 +30,8 @@ assert 3   "1+2"
 assert 6   "1+2 + 3"
 assert 10  "30-20"
 assert 33  "30 - 3 + 6"
-
+assert 20  "4+4*4"
+assert 8   "16*2/4"
+assert 9   "3*6/2"
 
 echo "ok"

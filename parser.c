@@ -5,6 +5,7 @@ static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *node_num(Token *tok);
 static Node *parse_expr(Token **now);
+static Node *parse_mul(Token **now);
 static Node *parse_primary(Token **now);
 
 Node *
@@ -45,25 +46,53 @@ node_num(Token *tok)
     return node;
 }
 
-// <expr> = <primary> ("+" <primary> | "-" <primary>)*
+// <expr> = <mul> ("+" <mul> | "-" <mul>)*
 static Node *
 parse_expr(Token **now)
 {
     Token *tok = *now;
-    Node *node = parse_primary(&tok);
+    Node *node = parse_mul(&tok);
 
     for (;;)
     {
         if (token_eq(tok, "+"))
         {
             tok = tok->next;
-            node = new_binary(NT_ADD, node, parse_primary(&tok));
+            node = new_binary(NT_ADD, node, parse_mul(&tok));
             continue;
         }
         if (token_eq(tok, "-"))
         {
             tok = tok->next;
-            node = new_binary(NT_SUB, node, parse_primary(&tok));
+            node = new_binary(NT_SUB, node, parse_mul(&tok));
+            continue;
+        }
+        break;
+    }
+
+    *now = tok;
+    return node;
+}
+
+// <mul> = <primary> ("*" <primary> | "/" <primary>)*
+static Node *
+parse_mul(Token **now)
+{
+    Token *tok = *now;
+    Node *node = parse_primary(&tok);
+
+    for (;;)
+    {
+        if (token_eq(tok, "*"))
+        {
+            tok = tok->next;
+            node = new_binary(NT_MUL, node, parse_primary(&tok));
+            continue;
+        }
+        if (token_eq(tok, "/"))
+        {
+            tok = tok->next;
+            node = new_binary(NT_DIV, node, parse_primary(&tok));
             continue;
         }
         break;

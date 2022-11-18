@@ -35,6 +35,8 @@ typedef enum {
     NT_NUM,
     NT_ADD,
     NT_SUB,
+    NT_MUL,
+    NT_DIV,
 } NodeType;
 
 struct Node {
