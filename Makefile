@@ -1,7 +1,7 @@
 
 all: aslc
 
-aslc: main.c
+aslc: main.c lexer.c
 	$(CC) $^ -o $@
 
 clean:
