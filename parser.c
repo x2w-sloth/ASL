@@ -2,8 +2,10 @@
 #include "aslc.h"
 
 static Node *new_node(NodeType type);
+static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *node_num(Token *tok);
 static Node *parse_expr(Token **now);
+static Node *parse_primary(Token **now);
 
 Node *
 parse(Token *tok)
@@ -24,6 +26,17 @@ new_node(NodeType type)
 }
 
 static Node *
+new_binary(NodeType type, Node *lch, Node *rch)
+{
+    Node *node = new_node(type);
+
+    node->lch = lch;
+    node->rch = rch;
+
+    return node;
+}
+
+static Node *
 node_num(Token *tok)
 {
     Node *node = new_node(NT_NUM);
@@ -32,15 +45,43 @@ node_num(Token *tok)
     return node;
 }
 
-// <expr> = <num>
+// <expr> = <primary> ("+" <primary> | "-" <primary>)*
 static Node *
 parse_expr(Token **now)
+{
+    Token *tok = *now;
+    Node *node = parse_primary(&tok);
+
+    for (;;)
+    {
+        if (token_eq(tok, "+"))
+        {
+            tok = tok->next;
+            node = new_binary(NT_ADD, node, parse_primary(&tok));
+            continue;
+        }
+        if (token_eq(tok, "-"))
+        {
+            tok = tok->next;
+            node = new_binary(NT_SUB, node, parse_primary(&tok));
+            continue;
+        }
+        break;
+    }
+
+    *now = tok;
+    return node;
+}
+
+// <primary> = <num>
+static Node *
+parse_primary(Token **now)
 {
     Token *tok = *now;
     Node *node;
 
     if (tok->type != TT_NUM)
-        die("bad expression");
+        die("bad primary from token %d", tok->type);
 
     node = node_num(tok);
     *now = tok->next;

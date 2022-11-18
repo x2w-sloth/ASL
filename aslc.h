@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdarg.h>
 
 typedef struct Token Token;
@@ -11,7 +12,9 @@ typedef struct Node Node;
 // lexer.c
 
 typedef enum {
-    TT_NUM,
+    TT_NUM,      // numeric literal
+    TT_PUNC,     // punctuator
+    TT_END,      // last token
 } TokenType;
 
 struct Token {
@@ -24,11 +27,14 @@ struct Token {
 };
 
 Token *tokenize(const char *s);
+bool token_eq(const Token *tok, const char *str);
 
 // parser.c
 
 typedef enum {
-    NT_NUM
+    NT_NUM,
+    NT_ADD,
+    NT_SUB,
 } NodeType;
 
 struct Node {

@@ -25,9 +25,23 @@ tokenize(const char *c)
             c += tok->len;
             continue;
         }
+        if (*c == '+' || *c == '-')
+        {
+            tok = tok->next = new_token(TT_PUNC);
+            tok->len = 1;
+            tok->pos = c++;
+            continue;
+        }
     }
 
+    tok->next = new_token(TT_END);
     return dummy.next;
+}
+
+bool
+token_eq(const Token *tok, const char *str)
+{
+    return tok->len == strlen(str) && !memcmp(tok->pos, str, tok->len);
 }
 
 static Token *

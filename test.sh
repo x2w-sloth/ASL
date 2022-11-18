@@ -26,5 +26,10 @@ assert 0   "0"
 assert 4   "4"
 assert 30  "30"
 assert 255 "255"
+assert 3   "1+2"
+assert 6   "1+2 + 3"
+assert 10  "30-20"
+assert 33  "30 - 3 + 6"
+
 
 echo "ok"
