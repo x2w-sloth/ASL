@@ -2,9 +2,11 @@
 #define ASLC_H
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 
 typedef struct Token Token;
+typedef struct Node Node;
 
 // lexer.c
 
@@ -22,6 +24,21 @@ struct Token {
 };
 
 Token *tokenize(const char *s);
+
+// parser.c
+
+typedef enum {
+    NT_NUM
+} NodeType;
+
+struct Node {
+    NodeType type;
+    Node *lch, *rch;
+    // number
+    int ival;
+};
+
+Node *parse(Token *tok);
 
 // main.c
 
