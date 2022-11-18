@@ -28,6 +28,7 @@ struct Token {
 
 Token *tokenize(const char *s);
 bool token_eq(const Token *tok, const char *str);
+void token_assert(const Token *tok, const char *str);
 
 // parser.c
 

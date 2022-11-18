@@ -102,17 +102,25 @@ parse_mul(Token **now)
     return node;
 }
 
-// <primary> = <num>
+// <primary> = "(" <expr> ")"
+//           | <num>
 static Node *
 parse_primary(Token **now)
 {
     Token *tok = *now;
     Node *node;
 
-    if (tok->type != TT_NUM)
+    if (token_eq(tok, "("))
+    {
+        tok = tok->next;
+        node = parse_expr(&tok);
+        token_assert(tok, ")");
+    }
+    else if (tok->type == TT_NUM)
+        node = node_num(tok);
+    else
         die("bad primary from token %d", tok->type);
 
-    node = node_num(tok);
     *now = tok->next;
     return node;
 }
