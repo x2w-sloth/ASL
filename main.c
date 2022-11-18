@@ -27,18 +27,6 @@ xmalloc(size_t size)
     return mem;
 }
 
-// generate assembly for GNU assembler and linker
-static void
-gen(int num)
-{
-    println("  .globl _start");
-    println("_start:");
-    println("  mov  rax, %d", num);
-    println("  mov  rdi, rax");
-    println("  mov  rax, 0x3C");
-    println("  syscall");
-}
-
 int
 main(int argc, char **argv)
 {
@@ -47,7 +35,7 @@ main(int argc, char **argv)
 
     Token *tok = tokenize(argv[1]);
     Node *root = parse(tok);
-    gen(root->ival);
+    gen(root);
 
     return 0;
 }

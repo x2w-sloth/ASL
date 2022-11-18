@@ -40,6 +40,10 @@ struct Node {
 
 Node *parse(Token *tok);
 
+// codegen.c
+
+void gen(Node *node);
+
 // main.c
 
 #define println(...)    fprintln(stdout, __VA_ARGS__)
