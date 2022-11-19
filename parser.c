@@ -5,6 +5,7 @@ static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *new_unary(NodeType type, Node *lch);
 static Node *node_num(Token *tok);
+static Node *parse_stmt(Token **now);
 static Node *parse_expr(Token **now);
 static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
@@ -13,8 +14,14 @@ static Node *parse_primary(Token **now);
 Node *
 parse(Token *tok)
 {
-    // parse program as single numeric expression
-    return parse_expr(&tok);
+    Node dummy;
+    Node *node = &dummy;
+
+    // parse program as one or more statements
+    while (tok->type != TT_END)
+        node = node->next = parse_stmt(&tok);
+
+    return dummy.next;
 }
 
 static Node *
@@ -56,6 +63,18 @@ node_num(Token *tok)
     node->ival = tok->ival;
 
     return node;
+}
+
+// <stmt> = <expr> ";"
+static Node *
+parse_stmt(Token **now)
+{
+    Node *node = parse_expr(now);
+
+    token_assert(*now, ";");
+    token_consume(now, ";");
+
+    return new_unary(NT_EXPR_STMT, node);
 }
 
 // <expr> = <mul> ("+" <mul> | "-" <mul>)*

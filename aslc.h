@@ -40,11 +40,12 @@ typedef enum {
     NT_MUL,
     NT_DIV,
     NT_NEG,
+    NT_EXPR_STMT,
 } NodeType;
 
 struct Node {
     NodeType type;
-    Node *lch, *rch;
+    Node *lch, *rch, *next;
     // number
     int ival;
 };

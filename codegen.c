@@ -1,6 +1,7 @@
 #include "aslc.h"
 
-static void gen_expr(Node *root);
+static void gen_stmt(Node *node);
+static void gen_expr(Node *node);
 static void push();
 static void pop(const char *reg);
 static int depth;
@@ -11,14 +12,29 @@ gen(Node *root)
     println("  .globl _start");
     println("_start:");
 
-    gen_expr(root);
-
-    if (depth != 0)
-        die("bad stack depth %d", depth);
+    for (Node *stmt = root; stmt; stmt = stmt->next)
+    {
+        gen_stmt(stmt);
+        if (depth != 0)
+            die("bad stack depth %d", depth);
+    }
 
     println("  mov  rdi, rax");
     println("  mov  rax, 0x3C");
     println("  syscall");
+}
+
+static void
+gen_stmt(Node *node)
+{
+    switch (node->type)
+    {
+        case NT_EXPR_STMT:
+            gen_expr(node->lch);
+            break;
+        default:
+            die("bad stmt node %d", node->type);
+    }
 }
 
 static void
