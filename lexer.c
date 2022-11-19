@@ -51,6 +51,17 @@ token_assert(const Token *tok, const char *str)
         die("token expected: %s, got %.*s", str, tok->len, tok->pos);
 }
 
+bool
+token_consume(Token **tok, const char *str)
+{
+    if (token_eq(*tok, str))
+    {
+        *tok = (*tok)->next;
+        return true;
+    }
+    return false;;
+}
+
 static Token *
 new_token(TokenType type)
 {

@@ -29,6 +29,7 @@ struct Token {
 Token *tokenize(const char *s);
 bool token_eq(const Token *tok, const char *str);
 void token_assert(const Token *tok, const char *str);
+bool token_consume(Token **tok, const char *str);
 
 // parser.c
 
@@ -38,6 +39,7 @@ typedef enum {
     NT_SUB,
     NT_MUL,
     NT_DIV,
+    NT_NEG,
 } NodeType;
 
 struct Node {

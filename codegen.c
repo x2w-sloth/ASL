@@ -29,6 +29,10 @@ gen_expr(Node *node)
         case NT_NUM:
             println("  mov  rax, %d", node->ival);
             return;
+        case NT_NEG:
+            gen_expr(node->lch);
+            println("  neg  rax");
+            return;
         default:
             break;
     }

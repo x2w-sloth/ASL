@@ -3,9 +3,11 @@
 
 static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
+static Node *new_unary(NodeType type, Node *lch);
 static Node *node_num(Token *tok);
 static Node *parse_expr(Token **now);
 static Node *parse_mul(Token **now);
+static Node *parse_unary(Token **now);
 static Node *parse_primary(Token **now);
 
 Node *
@@ -33,6 +35,16 @@ new_binary(NodeType type, Node *lch, Node *rch)
 
     node->lch = lch;
     node->rch = rch;
+
+    return node;
+}
+
+static Node *
+new_unary(NodeType type, Node *lch)
+{
+    Node *node = new_node(type);
+
+    node->lch = lch;
 
     return node;
 }
@@ -74,29 +86,48 @@ parse_expr(Token **now)
     return node;
 }
 
-// <mul> = <primary> ("*" <primary> | "/" <primary>)*
+// <mul> = <unary> ("*" <unary> | "/" <unary>)*
 static Node *
 parse_mul(Token **now)
 {
     Token *tok = *now;
-    Node *node = parse_primary(&tok);
+    Node *node = parse_unary(&tok);
 
     for (;;)
     {
         if (token_eq(tok, "*"))
         {
             tok = tok->next;
-            node = new_binary(NT_MUL, node, parse_primary(&tok));
+            node = new_binary(NT_MUL, node, parse_unary(&tok));
             continue;
         }
         if (token_eq(tok, "/"))
         {
             tok = tok->next;
-            node = new_binary(NT_DIV, node, parse_primary(&tok));
+            node = new_binary(NT_DIV, node, parse_unary(&tok));
             continue;
         }
         break;
     }
+
+    *now = tok;
+    return node;
+}
+
+// <unary> = ("+" | "-") <unary>
+//         | <primary>
+static Node *
+parse_unary(Token **now)
+{
+    Token *tok = *now;
+    Node *node;
+
+    if (token_consume(&tok, "+"))
+        node = parse_unary(&tok);
+    else if (token_consume(&tok, "-"))
+        node = new_unary(NT_NEG, parse_unary(&tok));
+    else
+        node = parse_primary(&tok);
 
     *now = tok;
     return node;
