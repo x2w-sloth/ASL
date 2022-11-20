@@ -82,6 +82,20 @@ gen_expr(Node *node)
         case NT_DIV:
             println("  idiv rdi");
             break;
+        case NT_EQ:
+        case NT_NE:
+        case NT_LT:
+        case NT_LE:
+            println("  cmp  rax, rdi");
+            if (node->type == NT_EQ)
+                println("  sete al");
+            if (node->type == NT_NE)
+                println("  setne al");
+            if (node->type == NT_LT)
+                println("  setl al");
+            if (node->type == NT_LE)
+                println("  setle al");
+            break;
         default:
             die("bad expr node %d", node->type);
     }

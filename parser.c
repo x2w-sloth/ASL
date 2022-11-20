@@ -9,6 +9,8 @@ static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
 static Node *parse_expr(Token **now);
+static Node *parse_cmp(Token **now);
+static Node *parse_add(Token **now);
 static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
 static Node *parse_primary(Token **now);
@@ -113,9 +115,40 @@ parse_expr_stmt(Token **now)
     return node;
 }
 
-// <expr> = <mul> ("+" <mul> | "-" <mul>)*
+// <expr> = <cmp>
 static Node *
 parse_expr(Token **now)
+{
+    return parse_cmp(now);
+}
+
+// <cmp> = <add> ("==" <add> | "!=" <add> | "<" <add> | "<=" <add> | ">" <add> | ">=" <add>)?
+static Node *
+parse_cmp(Token **now)
+{
+    Token *tok = *now;
+    Node *node = parse_add(&tok);
+
+    if (token_consume(&tok, "=="))
+        node = new_binary(NT_EQ, node, parse_add(&tok));
+    else if (token_consume(&tok, "!="))
+        node = new_binary(NT_NE, node, parse_add(&tok));
+    else if (token_consume(&tok, "<"))
+        node = new_binary(NT_LT, node, parse_add(&tok));
+    else if (token_consume(&tok, "<="))
+        node = new_binary(NT_LE, node, parse_add(&tok));
+    else if (token_consume(&tok, ">"))
+        node = new_binary(NT_LT, parse_add(&tok), node);
+    else if (token_consume(&tok, ">="))
+        node = new_binary(NT_LE, parse_add(&tok), node);
+
+    *now = tok;
+    return node;
+}
+
+// <add> = <mul> ("+" <mul> | "-" <mul>)*
+static Node *
+parse_add(Token **now)
 {
     Token *tok = *now;
     Node *node = parse_mul(&tok);

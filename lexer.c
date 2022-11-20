@@ -5,6 +5,7 @@
 
 static Token *new_token(TokenType type);
 static Token *read_num(const char *pos);
+static Token *read_punc(const char *pos);
 static Token *read_ident(const char *pos);
 static bool is_keyword(const Token *tok);
 static bool is_ident1(const char c);
@@ -32,9 +33,8 @@ tokenize(const char *c)
         }
         if (ispunct(*c))
         {
-            tok = tok->next = new_token(TT_PUNC);
-            tok->len = 1;
-            tok->pos = c++;
+            tok = tok->next = read_punc(c);
+            c += tok->len;
             continue;
         }
         if ((next = read_ident(c)))
@@ -99,6 +99,32 @@ read_num(const char *pos)
         pos++;
     tok->len = pos - tok->pos;
 
+    return tok;
+}
+
+static Token *
+read_punc(const char *pos)
+{
+    static const char *puncs[] = {
+        "<<=", ">>=", "==", "!=", "<=", ">=", "->",
+        "+=", "-=", "*=", "/=", "%=", "++", "--"
+    };
+    size_t len = 1;
+    int i;
+
+    if (!ispunct(*pos))
+        return NULL;
+
+    for (i = 0; i < COUNT(puncs); i++)
+        if (!strncmp(pos, puncs[i], strlen(puncs[i])))
+        {
+            len = strlen(puncs[i]);;
+            break;
+        }
+
+    Token *tok = new_token(TT_PUNC);
+    tok->len = len;
+    tok->pos = pos;
     return tok;
 }
 
