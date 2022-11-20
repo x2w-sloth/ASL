@@ -29,6 +29,10 @@ gen_stmt(Node *node)
 {
     switch (node->type)
     {
+        case NT_BLOCK_STMT:
+            for (Node *stmt = node->block; stmt; stmt = stmt->next)
+                gen_stmt(stmt);
+            break;
         case NT_EXPR_STMT:
             gen_expr(node->lch);
             break;

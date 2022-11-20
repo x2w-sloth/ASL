@@ -40,6 +40,7 @@ typedef enum {
     NT_MUL,
     NT_DIV,
     NT_NEG,
+    NT_BLOCK_STMT,
     NT_EXPR_STMT,
 } NodeType;
 
@@ -48,6 +49,8 @@ struct Node {
     Node *lch, *rch, *next;
     // number
     int ival;
+    // block statement
+    Node *block;
 };
 
 Node *parse(Token *tok);
