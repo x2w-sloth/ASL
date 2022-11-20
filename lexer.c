@@ -42,8 +42,6 @@ tokenize(const char *c)
             tok = tok->next = next;
             if (is_keyword(tok))
                 tok->type = TT_KEYWORD;
-            else
-                die("unknown keyword: %.*s", tok->len, c);
             c += tok->len;
             continue;
         }

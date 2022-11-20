@@ -2,6 +2,7 @@
 
 static void gen_stmt(Node *node);
 static void gen_expr(Node *node);
+static void gen_addr(Node *node);
 static void push();
 static void pop(const char *reg);
 static int depth;
@@ -12,6 +13,10 @@ gen(Node *root)
     println("  .globl _start");
     println("_start:");
 
+    println("  push rbp");
+    println("  mov  rbp, rsp");
+    println("  sub  rsp, 256"); // TODO: calculate aligned stack size
+
     for (Node *stmt = root; stmt; stmt = stmt->next)
     {
         gen_stmt(stmt);
@@ -21,6 +26,9 @@ gen(Node *root)
 
     println("  .globl exit");
     println("exit:");
+    println("  mov  rsp, rbp");
+    println("  pop  rbp");
+
     println("  mov  rdi, rax");
     println("  mov  rax, 0x3C");
     println("  syscall");
@@ -54,6 +62,17 @@ gen_expr(Node *node)
     {
         case NT_NUM:
             println("  mov  rax, %d", node->ival);
+            return;
+        case NT_VAR:
+            gen_addr(node);
+            println("  mov  rax, [rax]");
+            return;
+        case NT_ASSIGN:
+            gen_addr(node->lch);
+            push();
+            gen_expr(node->rch);
+            pop("rdi");
+            println("  mov  [rdi], rax");
             return;
         case NT_NEG:
             gen_expr(node->lch);
@@ -98,6 +117,19 @@ gen_expr(Node *node)
             break;
         default:
             die("bad expr node %d", node->type);
+    }
+}
+
+static void
+gen_addr(Node *node)
+{
+    switch (node->type)
+    {
+        case NT_VAR:
+            println("  lea  rax, [rbp - %d]", node->var->rbp_off);
+            break;
+        default:
+            die("bad addr node %d", node->type);
     }
 }
 

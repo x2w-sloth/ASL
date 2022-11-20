@@ -11,7 +11,7 @@ assert() {
     output="$?"
 
     if [ "$expect" = "$output" ]; then
-        echo "$expect => $output"
+        echo "$input => $output"
     else
         echo "$input => $output, expected $expect"
         exit 1
@@ -59,5 +59,10 @@ assert 1   "{return 1>=0;}"
 assert 1   "{return 1>=1;}"
 assert 0   "{return 1>=2;}"
 assert 1   "{return (1+2)*3 == 18/2;}"
+assert 3   "{a=1+2; return a;}"
+assert 2   "{a=3; z=5; return z-a;}"
+assert 2   "{a1; a2; a1=a2=1; return a1+a2;}"
+assert 2   "{a=b=c=5; return (a+b)/c;}"
+assert 3   "{var; return var=3;}"
 
 echo "ok"

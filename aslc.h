@@ -10,6 +10,7 @@
 
 typedef struct Token Token;
 typedef struct Node Node;
+typedef struct Obj Obj;
 
 // lexer.c
 
@@ -39,6 +40,8 @@ bool token_consume(Token **tok, const char *str);
 
 typedef enum {
     NT_NUM,
+    NT_VAR,
+    NT_ASSIGN,
     NT_ADD,
     NT_SUB,
     NT_MUL,
@@ -60,6 +63,20 @@ struct Node {
     int ival;
     // block statement
     Node *block;
+    // variable
+    Obj *var;
+};
+
+typedef enum {
+    OT_LOCAL,    // stack automatic variable
+} ObjType;
+
+struct Obj {
+    ObjType type;
+    Obj *next;
+    const char *name;
+    // local variable
+    int rbp_off;
 };
 
 Node *parse(Token *tok);

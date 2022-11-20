@@ -4,16 +4,23 @@
 static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *new_unary(NodeType type, Node *lch);
+static Node *node_var(Obj *var);
 static Node *node_num(Token *tok);
+static Obj *new_obj(ObjType type);
+static Obj *obj_local(const char *name);
+static Obj *find_local(const char *name, size_t len);
 static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
 static Node *parse_expr(Token **now);
+static Node *parse_assign(Token **now);
 static Node *parse_cmp(Token **now);
 static Node *parse_add(Token **now);
 static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
 static Node *parse_primary(Token **now);
+
+static Obj *locals;
 
 Node *
 parse(Token *tok)
@@ -61,12 +68,57 @@ new_unary(NodeType type, Node *lch)
 }
 
 static Node *
+node_var(Obj *var)
+{
+    Node *node = new_node(NT_VAR);
+
+    node->var = var;
+
+    return node;
+}
+
+static Node *
 node_num(Token *tok)
 {
     Node *node = new_node(NT_NUM);
     node->ival = tok->ival;
 
     return node;
+}
+
+static Obj *
+new_obj(ObjType type)
+{
+    Obj *obj = xmalloc(sizeof(Obj));
+    memset(obj, 0, sizeof(Obj));
+
+    obj->type = type;
+
+    return obj;
+}
+
+static Obj *
+obj_local(const char *name)
+{
+    static int offset = 0;
+    Obj *obj = new_obj(OT_LOCAL);
+
+    offset += 8;
+    obj->rbp_off = offset;
+    obj->name = name;
+    obj->next = locals;
+    locals = obj;
+
+    return obj;
+}
+
+static Obj *
+find_local(const char *name, size_t len)
+{
+    for (Obj *obj = locals; obj; obj = obj->next)
+        if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
+            return obj;
+    return NULL;
 }
 
 // <stmt> = "{" <block_stmt>
@@ -115,11 +167,25 @@ parse_expr_stmt(Token **now)
     return node;
 }
 
-// <expr> = <cmp>
+// <expr> = <assign>
 static Node *
 parse_expr(Token **now)
 {
-    return parse_cmp(now);
+    return parse_assign(now);
+}
+
+// <assign> = <cmp> ("=" <assign>)?
+static Node *
+parse_assign(Token **now)
+{
+    Token *tok = *now;
+    Node *node = parse_cmp(&tok);
+
+    if (token_consume(&tok, "="))
+        node = new_binary(NT_ASSIGN, node, parse_assign(&tok));
+
+    *now = tok;
+    return node;
 }
 
 // <cmp> = <add> ("==" <add> | "!=" <add> | "<" <add> | "<=" <add> | ">" <add> | ">=" <add>)?
@@ -222,6 +288,7 @@ parse_unary(Token **now)
 }
 
 // <primary> = "(" <expr> ")"
+//           | <ident>
 //           | <num>
 static Node *
 parse_primary(Token **now)
@@ -234,6 +301,13 @@ parse_primary(Token **now)
         tok = tok->next;
         node = parse_expr(&tok);
         token_assert(tok, ")");
+    }
+    else if (tok->type == TT_IDENT)
+    {
+        Obj *local = find_local(tok->pos, tok->len);
+        if (!local) // allocate new local var for identifier
+            local = obj_local(strndup(tok->pos, tok->len));
+        node = node_var(local);
     }
     else if (tok->type == TT_NUM)
         node = node_num(tok);
