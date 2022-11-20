@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
+#define COUNT(A)     (sizeof(A) / sizeof(*(A)))
+
 typedef struct Token Token;
 typedef struct Node Node;
 
@@ -14,6 +16,8 @@ typedef struct Node Node;
 typedef enum {
     TT_NUM,      // numeric literal
     TT_PUNC,     // punctuator
+    TT_IDENT,    // identifier
+    TT_KEYWORD,  // keyword
     TT_END,      // last token
 } TokenType;
 
@@ -40,6 +44,7 @@ typedef enum {
     NT_MUL,
     NT_DIV,
     NT_NEG,
+    NT_RET_STMT,
     NT_BLOCK_STMT,
     NT_EXPR_STMT,
 } NodeType;

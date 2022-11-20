@@ -19,6 +19,8 @@ gen(Node *root)
             die("bad stack depth %d", depth);
     }
 
+    println("  .globl exit");
+    println("exit:");
     println("  mov  rdi, rax");
     println("  mov  rax, 0x3C");
     println("  syscall");
@@ -29,6 +31,10 @@ gen_stmt(Node *node)
 {
     switch (node->type)
     {
+        case NT_RET_STMT:
+            gen_stmt(node->lch);
+            println("  jmp  exit");
+            break;
         case NT_BLOCK_STMT:
             for (Node *stmt = node->block; stmt; stmt = stmt->next)
                 gen_stmt(stmt);

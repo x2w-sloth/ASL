@@ -5,12 +5,17 @@
 
 static Token *new_token(TokenType type);
 static Token *read_num(const char *pos);
+static Token *read_ident(const char *pos);
+static bool is_keyword(const Token *tok);
+static bool is_ident1(const char c);
+static bool is_ident2(const char c);
 
 Token *
 tokenize(const char *c)
 {
     Token dummy;
-    Token *tok = &dummy;
+    Token *tok = &dummy, *next;
+    size_t len;
 
     while (*c != '\0')
     {
@@ -30,6 +35,16 @@ tokenize(const char *c)
             tok = tok->next = new_token(TT_PUNC);
             tok->len = 1;
             tok->pos = c++;
+            continue;
+        }
+        if ((next = read_ident(c)))
+        {
+            tok = tok->next = next;
+            if (is_keyword(tok))
+                tok->type = TT_KEYWORD;
+            else
+                die("unknown keyword: %.*s", tok->len, c);
+            c += tok->len;
             continue;
         }
     }
@@ -85,4 +100,44 @@ read_num(const char *pos)
     tok->len = pos - tok->pos;
 
     return tok;
+}
+
+static Token *
+read_ident(const char *pos)
+{
+    const char *c = pos;
+
+    if (!is_ident1(*c++))
+        return NULL;
+
+    while (is_ident2(*c))
+        ++c;
+
+    Token *tok = new_token(TT_IDENT);
+    tok->len = c - pos;
+    tok->pos = pos;
+    return tok;
+}
+
+static bool
+is_keyword(const Token *tok)
+{
+    static const char *keywords[] = { "return" };
+
+    for (int i = 0; i < COUNT(keywords); i++)
+        if (token_eq(tok, keywords[i]))
+            return true;
+    return false;
+}
+
+static bool
+is_ident1(const char c)
+{
+    return (c == '_') || ('A'<=c && c<='Z') || ('a'<=c && c<='z');
+}
+
+static bool
+is_ident2(const char c)
+{
+    return is_ident1(c) || ('0'<=c && c <='9');
 }

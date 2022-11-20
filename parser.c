@@ -68,12 +68,15 @@ node_num(Token *tok)
 }
 
 // <stmt> = "{" <block_stmt>
+//        | "return" <expr_stmt>
 //        | <expr_stmt>
 static Node *
 parse_stmt(Token **now)
 {
     if (token_consume(now, "{"))
         return parse_block_stmt(now);
+    if (token_consume(now, "return"))
+        return new_unary(NT_RET_STMT, parse_expr_stmt(now));
 
     return parse_expr_stmt(now);
 }
