@@ -34,8 +34,8 @@ main(int argc, char **argv)
         die("usage: %s <source>", argv[0]);
 
     Token *tok = tokenize(argv[1]);
-    Node *root = parse(tok);
-    gen(root);
+    Obj *fn = parse(tok);
+    gen(fn);
 
     return 0;
 }

@@ -8,7 +8,9 @@ static Node *node_var(Obj *var);
 static Node *node_num(Token *tok);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(const char *name);
+static Obj *obj_fn(const char *name);
 static Obj *find_local(const char *name, size_t len);
+static Obj *parse_fn(Token **now);
 static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
@@ -22,15 +24,15 @@ static Node *parse_primary(Token **now);
 
 static Obj *locals;
 
-Node *
+Obj *
 parse(Token *tok)
 {
-    Node dummy = {};
-    Node *node = &dummy;
+    Obj dummy = {};
+    Obj *obj = &dummy;
 
-    // parse program as one or more statements
+    // parse program as one or more function definitions
     while (tok->type != TT_END)
-        node = node->next = parse_stmt(&tok);
+        obj = obj->next = parse_fn(&tok);
 
     return dummy.next;
 }
@@ -100,14 +102,21 @@ new_obj(ObjType type)
 static Obj *
 obj_local(const char *name)
 {
-    static int offset = 0;
     Obj *obj = new_obj(OT_LOCAL);
 
-    offset += 8;
-    obj->rbp_off = offset;
     obj->name = name;
     obj->next = locals;
     locals = obj;
+
+    return obj;
+}
+
+static Obj *
+obj_fn(const char *name)
+{
+    Obj *obj = new_obj(OT_FN);
+
+    obj->name = name;
 
     return obj;
 }
@@ -119,6 +128,29 @@ find_local(const char *name, size_t len)
         if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
             return obj;
     return NULL;
+}
+
+// <fn> = "fn" <ident> "(" ")" "{" <block_stmt>
+static Obj *parse_fn(Token **now)
+{
+    Token *tok = *now;
+
+    token_assert_consume(&tok, "fn");
+    if (tok->type != TT_IDENT)
+        die("expected function name identifier");
+
+    Obj *fn = obj_fn(strndup(tok->pos, tok->len));
+    tok = tok->next;
+
+    token_assert_consume(&tok, "(");
+    token_assert_consume(&tok, ")");
+    token_assert_consume(&tok, "{");
+    locals = NULL;
+    fn->body = parse_block_stmt(&tok);
+    fn->locals = locals;
+
+    *now = tok;
+    return fn;
 }
 
 // <stmt> = "{" <block_stmt>
@@ -162,8 +194,7 @@ parse_expr_stmt(Token **now)
         return new_node(NT_BLOCK_STMT);
 
     node = new_unary(NT_EXPR_STMT, parse_expr(now));
-    token_assert(*now, ";");
-    token_consume(now, ";");
+    token_assert_consume(now, ";");
     return node;
 }
 

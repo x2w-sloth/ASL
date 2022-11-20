@@ -35,6 +35,7 @@ Token *tokenize(const char *s);
 bool token_eq(const Token *tok, const char *str);
 void token_assert(const Token *tok, const char *str);
 bool token_consume(Token **tok, const char *str);
+void token_assert_consume(Token **tok, const char *str);
 
 // parser.c
 
@@ -69,6 +70,7 @@ struct Node {
 
 typedef enum {
     OT_LOCAL,    // stack automatic variable
+    OT_FN,       // function
 } ObjType;
 
 struct Obj {
@@ -77,13 +79,17 @@ struct Obj {
     const char *name;
     // local variable
     int rbp_off;
+    // function
+    int stack_size;
+    Node *body;
+    Obj *locals;
 };
 
-Node *parse(Token *tok);
+Obj *parse(Token *tok);
 
 // codegen.c
 
-void gen(Node *node);
+void gen(Obj *prog);
 
 // main.c
 

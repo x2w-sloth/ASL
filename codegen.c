@@ -1,37 +1,56 @@
 #include "aslc.h"
 
+static void gen_fn(Obj *fn);
 static void gen_stmt(Node *node);
 static void gen_expr(Node *node);
 static void gen_addr(Node *node);
 static void push();
 static void pop(const char *reg);
+static void assign_locals(Obj *fn);
+static int align_to(int n, int align);
+
 static int depth;
+static Obj *fn_now;
 
 void
-gen(Node *root)
+gen(Obj *prog)
 {
+    for (Obj *fn = prog; fn; fn = fn->next)
+        gen_fn(fn);
+
     println("  .globl _start");
     println("_start:");
+    println("  call main");
+    println("  mov  rdi, rax");
+    println("  mov  rax, 0x3C");
+    println("  syscall");
+}
 
+static void
+gen_fn(Obj *fn)
+{
+    fn_now = fn;
+    assign_locals(fn);
+
+    // fn prologue
+    println("  .globl %s", fn->name);
+    println("%s:", fn->name);
     println("  push rbp");
     println("  mov  rbp, rsp");
-    println("  sub  rsp, 256"); // TODO: calculate aligned stack size
+    println("  sub  rsp, %d", fn->stack_size);
 
-    for (Node *stmt = root; stmt; stmt = stmt->next)
+    for (Node *stmt = fn->body; stmt; stmt = stmt->next)
     {
         gen_stmt(stmt);
         if (depth != 0)
             die("bad stack depth %d", depth);
     }
 
-    println("  .globl exit");
-    println("exit:");
+    // fn epilogue
+    println("ret.%s:", fn->name);
     println("  mov  rsp, rbp");
     println("  pop  rbp");
-
-    println("  mov  rdi, rax");
-    println("  mov  rax, 0x3C");
-    println("  syscall");
+    println("  ret");
 }
 
 static void
@@ -41,7 +60,7 @@ gen_stmt(Node *node)
     {
         case NT_RET_STMT:
             gen_stmt(node->lch);
-            println("  jmp  exit");
+            println("  jmp  ret.%s", fn_now->name);
             break;
         case NT_BLOCK_STMT:
             for (Node *stmt = node->block; stmt; stmt = stmt->next)
@@ -145,4 +164,24 @@ pop(const char *reg)
 {
     println("  pop  %s", reg);
     --depth;
+}
+
+static void
+assign_locals(Obj *fn)
+{
+    int offset = 8;
+
+    for (Obj *local = fn->locals; local; local = local->next)
+    {
+        local->rbp_off = offset;
+        offset += 8;
+    }
+
+    fn->stack_size = align_to(offset, 16);
+}
+
+static int
+align_to(int n, int align)
+{
+    return (n + align - 1) / align * align;
 }

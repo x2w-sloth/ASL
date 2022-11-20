@@ -75,6 +75,13 @@ token_consume(Token **tok, const char *str)
     return false;;
 }
 
+void
+token_assert_consume(Token **tok, const char *str)
+{
+    token_assert(*tok, str);
+    token_consume(tok, str);
+}
+
 static Token *
 new_token(TokenType type)
 {
