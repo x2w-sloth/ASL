@@ -319,7 +319,7 @@ parse_unary(Token **now)
 }
 
 // <primary> = "(" <expr> ")"
-//           | <ident>
+//           | <ident> ("(" ")")?
 //           | <num>
 static Node *
 parse_primary(Token **now)
@@ -327,24 +327,38 @@ parse_primary(Token **now)
     Token *tok = *now;
     Node *node;
 
+    // expression
     if (token_eq(tok, "("))
     {
         tok = tok->next;
         node = parse_expr(&tok);
         token_assert(tok, ")");
+        *now = tok->next;
+        return node;
     }
-    else if (tok->type == TT_IDENT)
+    if (tok->type == TT_IDENT)
     {
+        // funciton call
+        if (token_eq(tok->next, "("))
+        {
+            node = new_node(NT_FN_CALL);
+            node->fn_name = strndup(tok->pos, tok->len);
+            *now = tok->next->next;
+            token_assert_consume(now, ")");
+            return node;
+        }
+        // variable
         Obj *local = find_local(tok->pos, tok->len);
         if (!local) // allocate new local var for identifier
             local = obj_local(strndup(tok->pos, tok->len));
-        node = node_var(local);
+        *now = tok->next;
+        return node_var(local);
     }
-    else if (tok->type == TT_NUM)
-        node = node_num(tok);
-    else
-        die("bad primary from token %d", tok->type);
+    if (tok->type == TT_NUM)
+    {
+        *now = tok->next;
+        return node_num(tok);
+    }
 
-    *now = tok->next;
-    return node;
+    die("bad primary from token %d", tok->type);
 }

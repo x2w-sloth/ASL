@@ -64,5 +64,7 @@ assert 2   "fn main() {a=3; z=5; return z-a;}"
 assert 2   "fn main() {a1; a2; a1=a2=1; return a1+a2;}"
 assert 2   "fn main() {a=b=c=5; return (a+b)/c;}"
 assert 3   "fn main() {var; return var=3;}"
+assert 4   "fn main() { return get4(); } fn get4() { return 2 * 2; }"
+assert 10  "fn main() { return get2() * get5(); } fn get2() { return 2; } fn get5() { return 5; }"
 
 echo "ok"

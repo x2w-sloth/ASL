@@ -93,6 +93,10 @@ gen_expr(Node *node)
             pop("rdi");
             println("  mov  [rdi], rax");
             return;
+        case NT_FN_CALL:
+            println("  xor  rax, rax");
+            println("  call %s", node->fn_name);
+            return;
         case NT_NEG:
             gen_expr(node->lch);
             println("  neg  rax");

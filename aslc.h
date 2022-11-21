@@ -55,6 +55,7 @@ typedef enum {
     NT_RET_STMT,
     NT_BLOCK_STMT,
     NT_EXPR_STMT,
+    NT_FN_CALL,
 } NodeType;
 
 struct Node {
@@ -66,6 +67,8 @@ struct Node {
     Node *block;
     // variable
     Obj *var;
+    // function call
+    const char *fn_name;
 };
 
 typedef enum {
