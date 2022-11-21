@@ -11,6 +11,9 @@ static Obj *obj_local(const char *name);
 static Obj *obj_fn(const char *name);
 static Obj *find_local(const char *name, size_t len);
 static Obj *parse_fn(Token **now);
+static Node *parse_decl(Token **now);
+static Type *parse_declspec(Token **now);
+static Node *parse_declarator(Token **now);
 static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
@@ -153,6 +156,62 @@ static Obj *parse_fn(Token **now)
     return fn;
 }
 
+// <decl> = <declspec> <declarator>
+static Node *
+parse_decl(Token **now)
+{
+    Token *tok = *now;
+
+    Type *ty = parse_declspec(&tok);
+
+    Node *node = new_node(NT_BLOCK_STMT);
+    node->block = parse_declarator(&tok);
+
+    *now = tok;
+    return node;
+}
+
+// <declspec> = "i64"
+static Type *
+parse_declspec(Token **now)
+{
+    token_assert_consume(now, "i64");
+    return &type_i64;
+}
+
+// <declarator> = <ident> ("=" <expr>)? ("," <ident> ("=" <expr>)?)* ";"
+static Node *
+parse_declarator(Token **now)
+{
+    Token *tok = *now;
+    Node dummy = {};
+    Node *node = &dummy;
+
+    while (!token_eq(tok, ";"))
+    {
+        token_consume(&tok, ",");
+
+        if (tok->type != TT_IDENT)
+            die("expected identifier in declarator, got %d", tok->type);
+        if (find_local(tok->pos, tok->len))
+            die("identifier %.*s already declared", tok->len, tok->pos);
+
+        Obj *local = obj_local(strndup(tok->pos, tok->len));
+
+        tok = tok->next;
+        if (!token_consume(&tok, "="))
+            continue;
+
+        // assign value on declaration
+        Node *lch = node_var(local);
+        Node *rch = parse_assign(&tok);
+        node = node->next = new_unary(NT_EXPR_STMT, new_binary(NT_ASSIGN, lch, rch));
+    }
+
+    *now = tok->next;
+    return dummy.next;
+}
+
 // <stmt> = "{" <block_stmt>
 //        | "return" <expr_stmt>
 //        | <expr_stmt>
@@ -167,7 +226,7 @@ parse_stmt(Token **now)
     return parse_expr_stmt(now);
 }
 
-// <block_stmt> = (<stmt>)* "}"
+// <block_stmt> = (<decl> | <stmt>)* "}"
 static Node *
 parse_block_stmt(Token **now)
 {
@@ -176,7 +235,12 @@ parse_block_stmt(Token **now)
     Node *node = &dummy;
 
     while (!token_eq(tok, "}"))
-        node = node->next = parse_stmt(&tok);
+    {
+        if (token_eq(tok, "i64"))
+            node = node->next = parse_decl(&tok);
+        else
+            node = node->next = parse_stmt(&tok);
+    }
 
     node = new_node(NT_BLOCK_STMT);
     node->block = dummy.next;
@@ -349,8 +413,8 @@ parse_primary(Token **now)
         }
         // variable
         Obj *local = find_local(tok->pos, tok->len);
-        if (!local) // allocate new local var for identifier
-            local = obj_local(strndup(tok->pos, tok->len));
+        if (!local)
+            die("identifier %.*s not declared", tok->len, tok->pos);
         *now = tok->next;
         return node_var(local);
     }

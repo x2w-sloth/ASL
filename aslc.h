@@ -11,6 +11,7 @@
 typedef struct Token Token;
 typedef struct Node Node;
 typedef struct Obj Obj;
+typedef struct Type Type;
 
 // lexer.c
 
@@ -89,6 +90,19 @@ struct Obj {
 };
 
 Obj *parse(Token *tok);
+
+// type.c
+
+typedef enum {
+    DT_INT,
+} DataType;
+
+struct Type {
+    DataType type;
+    int bits;
+};
+
+extern Type type_i64;
 
 // codegen.c
 
