@@ -6,6 +6,8 @@ static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *new_unary(NodeType type, Node *lch);
 static Node *node_var(Obj *var);
 static Node *node_num(Token *tok);
+static Node *node_add(Node *lch, Node *rch);
+static Node *node_sub(Node *lch, Node *rch);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(const char *name);
 static Obj *obj_fn(const char *name);
@@ -91,6 +93,30 @@ node_num(Token *tok)
     return node;
 }
 
+static Node *
+node_add(Node *lch, Node *rch)
+{
+    add_dt(lch);
+    add_dt(rch);
+
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return new_binary(NT_ADD, lch, rch);
+
+    die("bad add between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static Node *
+node_sub(Node *lch, Node *rch)
+{
+    add_dt(lch);
+    add_dt(rch);
+
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return new_binary(NT_SUB, lch, rch);
+
+    die("bad sub between %d and %d", lch->dt->type, rch->dt->type);
+}
+
 static Obj *
 new_obj(ObjType type)
 {
@@ -133,7 +159,7 @@ find_local(const char *name, size_t len)
     return NULL;
 }
 
-// <fn> = "fn" <ident> "(" ")" "{" <block_stmt>
+// <fn> = "fn" <ident> "(" ")" (<declspec>)? "{" <block_stmt>
 static Obj *parse_fn(Token **now)
 {
     Token *tok = *now;
@@ -147,6 +173,10 @@ static Obj *parse_fn(Token **now)
 
     token_assert_consume(&tok, "(");
     token_assert_consume(&tok, ")");
+    
+    if (!token_eq(tok, "{"))
+        fn->ret_dt = parse_declspec(&tok);
+
     token_assert_consume(&tok, "{");
     locals = NULL;
     fn->body = parse_block_stmt(&tok);
@@ -238,8 +268,10 @@ parse_block_stmt(Token **now)
     {
         if (token_eq(tok, "i64"))
             node = node->next = parse_decl(&tok);
-        else
+        else {
             node = node->next = parse_stmt(&tok);
+            add_dt(node);
+        }
     }
 
     node = new_node(NT_BLOCK_STMT);
@@ -319,13 +351,13 @@ parse_add(Token **now)
         if (token_eq(tok, "+"))
         {
             tok = tok->next;
-            node = new_binary(NT_ADD, node, parse_mul(&tok));
+            node = node_add(node, parse_mul(&tok));
             continue;
         }
         if (token_eq(tok, "-"))
         {
             tok = tok->next;
-            node = new_binary(NT_SUB, node, parse_mul(&tok));
+            node = node_sub(node, parse_mul(&tok));
             continue;
         }
         break;

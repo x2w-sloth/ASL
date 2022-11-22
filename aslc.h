@@ -62,6 +62,7 @@ typedef enum {
 struct Node {
     NodeType type;
     Node *lch, *rch, *next;
+    Type *dt;
     // number
     int ival;
     // block statement
@@ -87,6 +88,7 @@ struct Obj {
     int stack_size;
     Node *body;
     Obj *locals;
+    Type *ret_dt;
 };
 
 Obj *parse(Token *tok);
@@ -103,6 +105,11 @@ struct Type {
 };
 
 extern Type type_i64;
+
+#define is_i64(T)       is_int((T), 64)
+
+void add_dt(Node *node);
+bool is_int(const Type *dt, int bits);
 
 // codegen.c
 
