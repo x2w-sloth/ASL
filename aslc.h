@@ -48,6 +48,8 @@ typedef enum {
     NT_SUB,
     NT_MUL,
     NT_DIV,
+    NT_DEREF,
+    NT_ADDR,
     NT_NEG,
     NT_EQ,
     NT_NE,
@@ -81,6 +83,7 @@ typedef enum {
 struct Obj {
     ObjType type;
     Obj *next;
+    Type *dt;
     const char *name;
     // local variable
     int rbp_off;
@@ -97,11 +100,15 @@ Obj *parse(Token *tok);
 
 typedef enum {
     DT_INT,
+    DT_PTR,
+    DT_FN,
 } DataType;
 
 struct Type {
     DataType type;
     int bits;
+    // pointer type
+    Type *base;
 };
 
 extern Type type_i64;
@@ -110,6 +117,8 @@ extern Type type_i64;
 
 void add_dt(Node *node);
 bool is_int(const Type *dt, int bits);
+Type *new_type(DataType type);
+Type *type_pointer(Type *base);
 
 // codegen.c
 

@@ -9,13 +9,13 @@ static Node *node_num(Token *tok);
 static Node *node_add(Node *lch, Node *rch);
 static Node *node_sub(Node *lch, Node *rch);
 static Obj *new_obj(ObjType type);
-static Obj *obj_local(const char *name);
+static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
 static Obj *find_local(const char *name, size_t len);
 static Obj *parse_fn(Token **now);
 static Node *parse_decl(Token **now);
 static Type *parse_declspec(Token **now);
-static Node *parse_declarator(Token **now);
+static Node *parse_declarator(Token **now, Type *dt);
 static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
@@ -129,10 +129,11 @@ new_obj(ObjType type)
 }
 
 static Obj *
-obj_local(const char *name)
+obj_local(Type *dt, const char *name)
 {
     Obj *obj = new_obj(OT_LOCAL);
 
+    obj->dt = dt;
     obj->name = name;
     obj->next = locals;
     locals = obj;
@@ -145,6 +146,7 @@ obj_fn(const char *name)
 {
     Obj *obj = new_obj(OT_FN);
 
+    obj->dt = new_type(DT_FN);
     obj->name = name;
 
     return obj;
@@ -192,26 +194,34 @@ parse_decl(Token **now)
 {
     Token *tok = *now;
 
-    Type *ty = parse_declspec(&tok);
+    Type *decl_dt = parse_declspec(&tok);
 
     Node *node = new_node(NT_BLOCK_STMT);
-    node->block = parse_declarator(&tok);
+    node->block = parse_declarator(&tok, decl_dt);
 
     *now = tok;
     return node;
 }
 
-// <declspec> = "i64"
+// <declspec> = "i64" ("*")*
 static Type *
 parse_declspec(Token **now)
 {
-    token_assert_consume(now, "i64");
-    return &type_i64;
+    Token *tok = *now;
+
+    token_assert_consume(&tok, "i64");
+    Type *dt = &type_i64;
+
+    while (token_consume(&tok, "*"))
+        dt = type_pointer(dt);
+
+    *now = tok;
+    return dt;
 }
 
 // <declarator> = <ident> ("=" <expr>)? ("," <ident> ("=" <expr>)?)* ";"
 static Node *
-parse_declarator(Token **now)
+parse_declarator(Token **now, Type *dt)
 {
     Token *tok = *now;
     Node dummy = {};
@@ -226,7 +236,7 @@ parse_declarator(Token **now)
         if (find_local(tok->pos, tok->len))
             die("identifier %.*s already declared", tok->len, tok->pos);
 
-        Obj *local = obj_local(strndup(tok->pos, tok->len));
+        Obj *local = obj_local(dt, strndup(tok->pos, tok->len));
 
         tok = tok->next;
         if (!token_consume(&tok, "="))
@@ -395,7 +405,7 @@ parse_mul(Token **now)
     return node;
 }
 
-// <unary> = ("+" | "-") <unary>
+// <unary> = ("+" | "-" | "*" | "&") <unary>
 //         | <primary>
 static Node *
 parse_unary(Token **now)
@@ -407,6 +417,10 @@ parse_unary(Token **now)
         node = parse_unary(&tok);
     else if (token_consume(&tok, "-"))
         node = new_unary(NT_NEG, parse_unary(&tok));
+    else if (token_consume(&tok, "*"))
+        node = new_unary(NT_DEREF, parse_unary(&tok));
+    else if (token_consume(&tok, "&"))
+        node = new_unary(NT_ADDR, parse_unary(&tok));
     else
         node = parse_primary(&tok);
 

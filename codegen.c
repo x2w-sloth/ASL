@@ -97,6 +97,13 @@ gen_expr(Node *node)
             println("  xor  rax, rax");
             println("  call %s", node->fn_name);
             return;
+        case NT_DEREF:
+            gen_expr(node->lch);
+            println("  mov  rax, [rax]");
+            return;
+        case NT_ADDR:
+            gen_addr(node->lch);
+            return;
         case NT_NEG:
             gen_expr(node->lch);
             println("  neg  rax");
@@ -150,6 +157,9 @@ gen_addr(Node *node)
     {
         case NT_VAR:
             println("  lea  rax, [rbp - %d]", node->var->rbp_off);
+            break;
+        case NT_DEREF:
+            gen_expr(node->lch);
             break;
         default:
             die("bad addr node %d", node->type);
