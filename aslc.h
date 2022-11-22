@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
 
@@ -66,7 +67,7 @@ struct Node {
     Node *lch, *rch, *next;
     Type *dt;
     // number
-    int ival;
+    int64_t ival;
     // block statement
     Node *block;
     // variable
@@ -114,6 +115,7 @@ struct Type {
 extern Type type_i64;
 
 #define is_i64(T)       is_int((T), 64)
+#define is_ptr(T)       ((T)->type == DT_PTR)
 
 void add_dt(Node *node);
 bool is_int(const Type *dt, int bits);

@@ -5,9 +5,11 @@ static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *new_unary(NodeType type, Node *lch);
 static Node *node_var(Obj *var);
-static Node *node_num(Token *tok);
+static Node *node_num(int64_t ival);
 static Node *node_add(Node *lch, Node *rch);
 static Node *node_sub(Node *lch, Node *rch);
+static Node *node_mul(Node *lch, Node *rch);
+static Node *node_div(Node *lch, Node *rch);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
@@ -85,10 +87,10 @@ node_var(Obj *var)
 }
 
 static Node *
-node_num(Token *tok)
+node_num(int64_t ival)
 {
     Node *node = new_node(NT_NUM);
-    node->ival = tok->ival;
+    node->ival = ival;
 
     return node;
 }
@@ -99,8 +101,19 @@ node_add(Node *lch, Node *rch)
     add_dt(lch);
     add_dt(rch);
 
+    // i64 + i64
     if (is_i64(lch->dt) && is_i64(rch->dt))
         return new_binary(NT_ADD, lch, rch);
+    // canonicalize i64 + ptr
+    if (is_i64(lch->dt) && is_ptr(rch->dt))
+    {
+        Node *tmp = lch;
+        lch = rch;
+        rch = tmp;
+    }
+    // ptr + i64
+    if (is_ptr(lch->dt) && is_i64(rch->dt))
+        return new_binary(NT_ADD, lch, new_binary(NT_MUL, rch, node_num(8)));
 
     die("bad add between %d and %d", lch->dt->type, rch->dt->type);
 }
@@ -111,10 +124,45 @@ node_sub(Node *lch, Node *rch)
     add_dt(lch);
     add_dt(rch);
 
+    // i64 - i64
     if (is_i64(lch->dt) && is_i64(rch->dt))
         return new_binary(NT_SUB, lch, rch);
+    // ptr - i64
+    if (is_ptr(lch->dt) && is_i64(rch->dt))
+        return new_binary(NT_SUB, lch, new_binary(NT_MUL, rch, node_num(8)));
+    // ptr - ptr
+    if (is_ptr(lch->dt) && is_ptr(rch->dt))
+    {
+        Node *node = new_binary(NT_DIV, new_binary(NT_SUB, lch, rch), node_num(8));
+        node->dt = &type_i64;
+        return node;
+    }
 
     die("bad sub between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static Node *
+node_mul(Node *lch, Node *rch)
+{
+    add_dt(lch);
+    add_dt(rch);
+
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return new_binary(NT_MUL, lch, rch);
+
+    die("bad mul between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static Node *
+node_div(Node *lch, Node *rch)
+{
+    add_dt(lch);
+    add_dt(rch);
+
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return new_binary(NT_DIV, lch, rch);
+
+    die("bad div between %d and %d", lch->dt->type, rch->dt->type);
 }
 
 static Obj *
@@ -389,13 +437,13 @@ parse_mul(Token **now)
         if (token_eq(tok, "*"))
         {
             tok = tok->next;
-            node = new_binary(NT_MUL, node, parse_unary(&tok));
+            node = node_mul(node, parse_unary(&tok));
             continue;
         }
         if (token_eq(tok, "/"))
         {
             tok = tok->next;
-            node = new_binary(NT_DIV, node, parse_unary(&tok));
+            node = node_div(node, parse_unary(&tok));
             continue;
         }
         break;
@@ -467,7 +515,7 @@ parse_primary(Token **now)
     if (tok->type == TT_NUM)
     {
         *now = tok->next;
-        return node_num(tok);
+        return node_num(tok->ival);
     }
 
     die("bad primary from token %d", tok->type);

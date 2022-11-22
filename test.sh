@@ -69,5 +69,12 @@ assert 10  "fn main() i64 { return get2() * get5(); } fn get2() i64 { return 2; 
 assert 10   "fn main() i64 { i64 x=10; return *&x; }"
 assert 10   "fn main() i64 { i64 x=10; i64* y=&x; i64** z=&y; return **z; }"
 assert 10   "fn main() i64 { i64 x=15; i64* y=&x; *y=10; return x; }"
+assert 5    "fn main() i64 { i64 x=3; i64 y=5; return *(&x+1); }"
+assert 3    "fn main() i64 { i64 x=3; i64 y=5; return *(&y-1); }"
+assert 1    "fn main() i64 { i64 x=3; i64 y=1; return *(&x-(-y)); }"
+assert 7    "fn main() i64 { i64 x, y=5; *(&x+1)=7; return y; }"
+assert 7    "fn main() i64 { i64 x=5, y; *(&y-1)=7; return x; }"
+assert 5    "fn main() i64 { i64 x; return (&x+3)-(&x-2); }"
+assert 10   "fn main() i64 { i64 x; return &x + 1 - &x + 9; }"
 
 echo "ok"
