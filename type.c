@@ -71,6 +71,15 @@ new_type(DataType type)
 }
 
 Type *
+copy_type(const Type *dt)
+{
+    Type *ndt = xmalloc(sizeof(Type));
+    *ndt = *dt;
+
+    return ndt;
+}
+
+Type *
 type_pointer(Type *base)
 {
     Type *dt = new_type(DT_PTR);

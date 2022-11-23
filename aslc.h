@@ -74,6 +74,7 @@ struct Node {
     Obj *var;
     // function call
     const char *fn_name;
+    Node *fn_args;
 };
 
 typedef enum {
@@ -91,8 +92,7 @@ struct Obj {
     // function
     int stack_size;
     Node *body;
-    Obj *locals;
-    Type *ret_dt;
+    Obj *params, *locals;
 };
 
 Obj *parse(Token *tok);
@@ -107,9 +107,14 @@ typedef enum {
 
 struct Type {
     DataType type;
+    Type *next;
     int bits;
+    const char *name;
     // pointer type
     Type *base;
+    // function type
+    Type *params;
+    Type *ret;
 };
 
 extern Type type_i64;
@@ -120,6 +125,7 @@ extern Type type_i64;
 void add_dt(Node *node);
 bool is_int(const Type *dt, int bits);
 Type *new_type(DataType type);
+Type *copy_type(const Type *dt);
 Type *type_pointer(Type *base);
 
 // codegen.c

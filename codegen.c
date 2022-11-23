@@ -11,6 +11,7 @@ static int align_to(int n, int align);
 
 static int depth;
 static Obj *fn_now;
+static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
 void
 gen(Obj *prog)
@@ -38,6 +39,11 @@ gen_fn(Obj *fn)
     println("  push rbp");
     println("  mov  rbp, rsp");
     println("  sub  rsp, %d", fn->stack_size);
+
+    // move parameters to stack
+    int i = 0;
+    for (Obj *param = fn->params; param; param = param->next)
+        println("  mov  [rbp - %d], %s", param->rbp_off, arg64[i++]);
 
     for (Node *stmt = fn->body; stmt; stmt = stmt->next)
     {
@@ -77,6 +83,8 @@ gen_stmt(Node *node)
 static void
 gen_expr(Node *node)
 {
+    int nargs = 0;
+
     switch (node->type)
     {
         case NT_NUM:
@@ -94,6 +102,15 @@ gen_expr(Node *node)
             println("  mov  [rdi], rax");
             return;
         case NT_FN_CALL:
+            for (Node *arg = node->fn_args; arg; arg = arg->next)
+            {
+                gen_expr(arg);
+                push();
+                if (++nargs > 6)
+                    die("no support for fn with more than 6 args");
+            }
+            for (int i = nargs - 1; i >= 0; i--)
+                pop(arg64[i]);
             println("  xor  rax, rax");
             println("  call %s", node->fn_name);
             return;

@@ -13,6 +13,7 @@ static Node *node_div(Node *lch, Node *rch);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
+static void obj_params(Type *param);
 static Obj *find_local(const char *name, size_t len);
 static Obj *parse_fn(Token **now);
 static Node *parse_decl(Token **now);
@@ -28,6 +29,7 @@ static Node *parse_add(Token **now);
 static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
 static Node *parse_primary(Token **now);
+static Node *parse_fn_call(Token **now);
 
 static Obj *locals;
 
@@ -200,6 +202,15 @@ obj_fn(const char *name)
     return obj;
 }
 
+static void
+obj_params(Type *param)
+{
+    if (param) {
+        obj_params(param->next);
+        obj_local(param, param->name);
+    }
+}
+
 static Obj *
 find_local(const char *name, size_t len)
 {
@@ -209,10 +220,14 @@ find_local(const char *name, size_t len)
     return NULL;
 }
 
-// <fn> = "fn" <ident> "(" ")" (<declspec>)? "{" <block_stmt>
-static Obj *parse_fn(Token **now)
+// <fn> = "fn" <ident> "(" (<fn_params>)? ")" (<declspec>)? "{" <block_stmt>
+// <fn_params> = <declspec> <ident>("," <declspec> <ident>)*
+static Obj *
+parse_fn(Token **now)
 {
     Token *tok = *now;
+    Type dummy = {};
+    Type *param_dt = &dummy;
 
     token_assert_consume(&tok, "fn");
     if (tok->type != TT_IDENT)
@@ -221,14 +236,31 @@ static Obj *parse_fn(Token **now)
     Obj *fn = obj_fn(strndup(tok->pos, tok->len));
     tok = tok->next;
 
+    // parse fn parameters
     token_assert_consume(&tok, "(");
+    while (!token_eq(tok, ")"))
+    {
+        token_consume(&tok, ",");
+        param_dt = param_dt->next = parse_declspec(&tok);
+        if (tok->type != TT_IDENT)
+            die("expected parameter name identifier");
+        param_dt->name = strndup(tok->pos, tok->len);
+        tok = tok->next;
+    }
     token_assert_consume(&tok, ")");
-    
-    if (!token_eq(tok, "{"))
-        fn->ret_dt = parse_declspec(&tok);
 
-    token_assert_consume(&tok, "{");
+    // allocate fn parameters as locals
     locals = NULL;
+    obj_params(dummy.next);
+    fn->dt->params = dummy.next;
+    fn->params = locals;
+    
+    // parse optional fn return type
+    if (!token_eq(tok, "{"))
+        fn->dt->ret = parse_declspec(&tok);
+    token_assert_consume(&tok, "{");
+
+    // parse fn body
     fn->body = parse_block_stmt(&tok);
     fn->locals = locals;
 
@@ -258,7 +290,7 @@ parse_declspec(Token **now)
     Token *tok = *now;
 
     token_assert_consume(&tok, "i64");
-    Type *dt = &type_i64;
+    Type *dt = copy_type(&type_i64);
 
     while (token_consume(&tok, "*"))
         dt = type_pointer(dt);
@@ -477,7 +509,8 @@ parse_unary(Token **now)
 }
 
 // <primary> = "(" <expr> ")"
-//           | <ident> ("(" ")")?
+//           | <fn_call>
+//           | <ident>
 //           | <num>
 static Node *
 parse_primary(Token **now)
@@ -499,10 +532,8 @@ parse_primary(Token **now)
         // funciton call
         if (token_eq(tok->next, "("))
         {
-            node = new_node(NT_FN_CALL);
-            node->fn_name = strndup(tok->pos, tok->len);
-            *now = tok->next->next;
-            token_assert_consume(now, ")");
+            node = parse_fn_call(&tok);
+            *now = tok;
             return node;
         }
         // variable
@@ -519,4 +550,28 @@ parse_primary(Token **now)
     }
 
     die("bad primary from token %d", tok->type);
+}
+
+// <fn_call> = <ident> "(" (<assign> ("," <assign>)*)? ")"
+static Node *
+parse_fn_call(Token **now)
+{
+    Token *iden = *now;
+    Token *tok = (*now)->next->next;
+    Node dummy = {};
+    Node *node = &dummy;
+
+    while (!token_eq(tok, ")"))
+    {
+        token_consume(&tok, ",");
+        node = node->next = parse_assign(&tok);
+    }
+
+    token_assert_consume(&tok, ")");
+    *now = tok;
+
+    node = new_node(NT_FN_CALL);
+    node->fn_name = strndup(iden->pos, iden->len);
+    node->fn_args = dummy.next;
+    return node;
 }
