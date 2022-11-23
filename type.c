@@ -21,6 +21,7 @@ add_dt(Node *node)
         case NT_RET_STMT:
         case NT_BLOCK_STMT:
         case NT_EXPR_STMT:
+        case NT_IF_STMT:
             return;
         case NT_ADD:
         case NT_SUB:

@@ -38,6 +38,7 @@ main()
     test_fn tests[] = {
         test_cmp,
         test_expr,
+        test_flow,
         test_locals,
         test_pointer,
         test_function,

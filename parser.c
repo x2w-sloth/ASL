@@ -22,6 +22,7 @@ static Node *parse_declarator(Token **now, Type *dt);
 static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
+static Node *parse_if_stmt(Token **now);
 static Node *parse_expr(Token **now);
 static Node *parse_assign(Token **now);
 static Node *parse_cmp(Token **now);
@@ -334,6 +335,7 @@ parse_declarator(Token **now, Type *dt)
 
 // <stmt> = "{" <block_stmt>
 //        | "return" <expr_stmt>
+//        | <if_stmt>
 //        | <expr_stmt>
 static Node *
 parse_stmt(Token **now)
@@ -342,6 +344,8 @@ parse_stmt(Token **now)
         return parse_block_stmt(now);
     if (token_consume(now, "return"))
         return new_unary(NT_RET_STMT, parse_expr_stmt(now));
+    if (token_eq(*now, "if"))
+        return parse_if_stmt(now);
 
     return parse_expr_stmt(now);
 }
@@ -381,6 +385,34 @@ parse_expr_stmt(Token **now)
 
     node = new_unary(NT_EXPR_STMT, parse_expr(now));
     token_assert_consume(now, ";");
+    return node;
+}
+
+// <if_stmt> = "if" <expr> "{" <block_stmt> ("else" ("{" <block_stmt> | <if_stmt>))?
+static Node *
+parse_if_stmt(Token **now)
+{
+    Token *tok = *now;
+    Node *node = new_node(NT_IF_STMT);
+
+    token_assert_consume(&tok, "if");
+    node->cond = parse_expr(&tok);
+    token_assert_consume(&tok, "{");
+    node->br_if = parse_block_stmt(&tok);
+
+    // optional else branch
+    if (token_consume(&tok, "else"))
+    {
+        if (token_eq(tok, "if"))
+            node->br_else = parse_if_stmt(&tok);
+        else
+        {
+            token_assert_consume(&tok, "{");
+            node->br_else = parse_block_stmt(&tok);
+        }
+    }
+
+    *now = tok;
     return node;
 }
 

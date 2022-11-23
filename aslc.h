@@ -59,6 +59,7 @@ typedef enum {
     NT_RET_STMT,
     NT_BLOCK_STMT,
     NT_EXPR_STMT,
+    NT_IF_STMT,
     NT_FN_CALL,
 } NodeType;
 
@@ -70,6 +71,8 @@ struct Node {
     int64_t ival;
     // block statement
     Node *block;
+    // if statement
+    Node *cond, *br_if, *br_else;
     // variable
     Obj *var;
     // function call

@@ -8,6 +8,7 @@ static void push();
 static void pop(const char *reg);
 static void assign_locals(Obj *fn);
 static int align_to(int n, int align);
+static int new_id();
 
 static int depth;
 static Obj *fn_now;
@@ -62,6 +63,8 @@ gen_fn(Obj *fn)
 static void
 gen_stmt(Node *node)
 {
+    int id;
+
     switch (node->type)
     {
         case NT_RET_STMT:
@@ -74,6 +77,25 @@ gen_stmt(Node *node)
             break;
         case NT_EXPR_STMT:
             gen_expr(node->lch);
+            break;
+        case NT_IF_STMT:
+            id = new_id();
+            gen_expr(node->cond);
+            println("  test rax, rax");
+            if (node->br_else)
+            {
+                println("  jz   else.%d", id);
+                gen_stmt(node->br_if);
+                println("  jmp  end.%d", id);
+                println("else.%d:", id);
+                gen_stmt(node->br_else);
+            }
+            else
+            {
+                println("  jz   end.%d", id);
+                gen_stmt(node->br_if);
+            }
+            println("end.%d:", id);
             break;
         default:
             die("bad stmt node %d", node->type);
@@ -215,4 +237,11 @@ static int
 align_to(int n, int align)
 {
     return (n + align - 1) / align * align;
+}
+
+static int
+new_id()
+{
+    static int id = 0;
+    return id++;
 }
