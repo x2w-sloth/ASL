@@ -23,6 +23,7 @@ static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
 static Node *parse_if_stmt(Token **now);
+static Node *parse_for_stmt(Token **now);
 static Node *parse_expr(Token **now);
 static Node *parse_assign(Token **now);
 static Node *parse_cmp(Token **now);
@@ -336,6 +337,7 @@ parse_declarator(Token **now, Type *dt)
 // <stmt> = "{" <block_stmt>
 //        | "return" <expr_stmt>
 //        | <if_stmt>
+//        | <for_stmt>
 //        | <expr_stmt>
 static Node *
 parse_stmt(Token **now)
@@ -346,6 +348,8 @@ parse_stmt(Token **now)
         return new_unary(NT_RET_STMT, parse_expr_stmt(now));
     if (token_eq(*now, "if"))
         return parse_if_stmt(now);
+    if (token_eq(*now, "for"))
+        return parse_for_stmt(now);
 
     return parse_expr_stmt(now);
 }
@@ -411,6 +415,34 @@ parse_if_stmt(Token **now)
             node->br_else = parse_block_stmt(&tok);
         }
     }
+
+    *now = tok;
+    return node;
+}
+
+// <for_stmt> = "for" (<expr> (";" <expr_stmt> (<expr>)?)?)? "{" <block_stmt>
+static Node *
+parse_for_stmt(Token **now)
+{
+    Token *tok = *now;
+    Node *node = new_node(NT_FOR_STMT);
+
+    token_assert_consume(&tok, "for");
+    if (token_appears_before(tok, ";", "{")) // classic for loop
+    {
+        node->init = parse_expr_stmt(&tok);
+        if (!token_eq(tok, ";"))
+            node->cond = parse_expr(&tok);
+        token_assert_consume(&tok, ";");
+        if (!token_eq(tok, "{"))
+            node->iter = parse_expr(&tok);
+    }
+    else if (!token_eq(tok, "{")) // while loop
+        node->cond = parse_expr(&tok);
+
+    // loop body
+    token_assert_consume(&tok, "{");
+    node->block = parse_block_stmt(&tok);
 
     *now = tok;
     return node;

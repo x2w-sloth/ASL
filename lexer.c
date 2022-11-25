@@ -82,6 +82,16 @@ token_assert_consume(Token **tok, const char *str)
     token_consume(tok, str);
 }
 
+bool
+token_appears_before(const Token *tok, const char *pat, const char *end)
+{
+    // look ahead to check if token "pat" appears before a token "end"
+    while (tok->type != TT_END && !token_eq(tok, pat) && !token_eq(tok, end))
+        tok = tok->next;
+
+    return token_eq(tok, pat);
+}
+
 static Token *
 new_token(TokenType type)
 {
@@ -153,7 +163,7 @@ read_ident(const char *pos)
 static bool
 is_keyword(const Token *tok)
 {
-    static const char *keywords[] = { "return", "if", "else" };
+    static const char *keywords[] = { "return", "if", "else", "for" };
 
     for (int i = 0; i < COUNT(keywords); i++)
         if (token_eq(tok, keywords[i]))

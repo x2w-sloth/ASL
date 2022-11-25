@@ -97,6 +97,23 @@ gen_stmt(Node *node)
             }
             println("end.%d:", id);
             break;
+        case NT_FOR_STMT:
+            id = new_id();
+            if (node->init)
+                gen_stmt(node->init);
+            println("for.body.%d:", id);
+            if (node->cond)
+            {
+                gen_expr(node->cond);
+                println("  test rax, rax");
+                println("  jz   for.exit.%d", id);
+            }
+            gen_stmt(node->block);
+            if (node->iter)
+                gen_expr(node->iter);
+            println("  jmp  for.body.%d", id);
+            println("for.exit.%d:", id);
+            break;
         default:
             die("bad stmt node %d", node->type);
     }

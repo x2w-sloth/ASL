@@ -38,6 +38,7 @@ bool token_eq(const Token *tok, const char *str);
 void token_assert(const Token *tok, const char *str);
 bool token_consume(Token **tok, const char *str);
 void token_assert_consume(Token **tok, const char *str);
+bool token_appears_before(const Token *tok, const char *pat, const char *end);
 
 // parser.c
 
@@ -60,6 +61,7 @@ typedef enum {
     NT_BLOCK_STMT,
     NT_EXPR_STMT,
     NT_IF_STMT,
+    NT_FOR_STMT,
     NT_FN_CALL,
 } NodeType;
 
@@ -71,8 +73,8 @@ struct Node {
     int64_t ival;
     // block statement
     Node *block;
-    // if statement
-    Node *cond, *br_if, *br_else;
+    // if statement, for statement
+    Node *init, *cond, *iter, *br_if, *br_else;
     // variable
     Obj *var;
     // function call
