@@ -32,6 +32,8 @@ static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
 static Node *parse_primary(Token **now);
 static Node *parse_fn_call(Token **now);
+static char *get_ident_str(Token *tok);
+static int64_t get_num_ival(Token *tok);
 
 static Obj *locals;
 
@@ -138,7 +140,7 @@ node_sub(Node *lch, Node *rch)
     if (is_ptr(lch->dt) && is_ptr(rch->dt))
     {
         Node *node = new_binary(NT_DIV, new_binary(NT_SUB, lch, rch), node_num(8));
-        node->dt = &type_i64;
+        node->dt = copy_type(&type_i64);
         return node;
     }
 
@@ -232,10 +234,8 @@ parse_fn(Token **now)
     Type *param_dt = &dummy;
 
     token_assert_consume(&tok, "fn");
-    if (tok->type != TT_IDENT)
-        die("expected function name identifier");
 
-    Obj *fn = obj_fn(strndup(tok->pos, tok->len));
+    Obj *fn = obj_fn(get_ident_str(tok));
     tok = tok->next;
 
     // parse fn parameters
@@ -244,9 +244,7 @@ parse_fn(Token **now)
     {
         token_consume(&tok, ",");
         param_dt = param_dt->next = parse_declspec(&tok);
-        if (tok->type != TT_IDENT)
-            die("expected parameter name identifier");
-        param_dt->name = strndup(tok->pos, tok->len);
+        param_dt->name = get_ident_str(tok);
         tok = tok->next;
     }
     token_assert_consume(&tok, ")");
@@ -260,6 +258,8 @@ parse_fn(Token **now)
     // parse optional fn return type
     if (!token_eq(tok, "{"))
         fn->dt->ret = parse_declspec(&tok);
+    else
+        fn->dt->ret = copy_type(&type_none);
     token_assert_consume(&tok, "{");
 
     // parse fn body
@@ -318,7 +318,7 @@ parse_declarator(Token **now, Type *dt)
         if (find_local(tok->pos, tok->len))
             die("identifier %.*s already declared", tok->len, tok->pos);
 
-        Obj *local = obj_local(dt, strndup(tok->pos, tok->len));
+        Obj *local = obj_local(dt, get_ident_str(tok));
 
         tok = tok->next;
         if (!token_consume(&tok, "="))
@@ -593,7 +593,7 @@ parse_primary(Token **now)
     }
     if (tok->type == TT_IDENT)
     {
-        // funciton call
+        // function call
         if (token_eq(tok->next, "("))
         {
             node = parse_fn_call(&tok);
@@ -635,7 +635,23 @@ parse_fn_call(Token **now)
     *now = tok;
 
     node = new_node(NT_FN_CALL);
-    node->fn_name = strndup(iden->pos, iden->len);
+    node->fn_name = get_ident_str(iden);
     node->fn_args = dummy.next;
     return node;
+}
+
+static char *
+get_ident_str(Token *tok)
+{
+    if (tok->type != TT_IDENT)
+        die("expected identifier token");
+    return strndup(tok->pos, tok->len);
+}
+
+static int64_t
+get_num_ival(Token *tok)
+{
+    if (tok->type != TT_NUM)
+        die("expected numeric token");
+    return tok->ival;
 }

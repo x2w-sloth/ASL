@@ -1,7 +1,8 @@
 #include <string.h>
 #include "aslc.h"
 
-Type type_i64 = { .type = DT_INT, .bits = 64 };
+const Type type_none = { .type = DT_NONE };
+const Type type_i64  = { .type = DT_INT, .bits = 64 };
 
 void
 add_dt(Node *node)
@@ -48,8 +49,8 @@ add_dt(Node *node)
         case NT_LT:
         case NT_LE:
         case NT_NUM:
-        case NT_FN_CALL:
-            node->dt = &type_i64;
+        case NT_FN_CALL: // TODO: use function return type
+            node->dt = copy_type(&type_i64);
             return;
         default:
             die("can not annotate data type for node %d", node->type);

@@ -30,7 +30,7 @@ struct Token {
     const char *pos;
     size_t len;
     // numeric literal
-    int ival;
+    int64_t ival;
 };
 
 Token *tokenize(const char *s);
@@ -105,6 +105,7 @@ Obj *parse(Token *tok);
 // type.c
 
 typedef enum {
+    DT_NONE,
     DT_INT,
     DT_PTR,
     DT_FN,
@@ -122,7 +123,8 @@ struct Type {
     Type *ret;
 };
 
-extern Type type_i64;
+extern const Type type_none; // denotes absence of type
+extern const Type type_i64;
 
 #define is_i64(T)       is_int((T), 64)
 #define is_ptr(T)       ((T)->type == DT_PTR)
