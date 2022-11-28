@@ -12,6 +12,7 @@ bool test_cmp();
 bool test_expr();
 bool test_flow();
 bool test_locals();
+bool test_globals();
 bool test_pointer();
 bool test_function();
 

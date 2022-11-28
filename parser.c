@@ -12,10 +12,12 @@ static Node *node_mul(Node *lch, Node *rch);
 static Node *node_div(Node *lch, Node *rch);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(Type *dt, const char *name);
+static Obj *obj_global(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
 static void obj_params(Type *param);
-static Obj *find_local(const char *name, size_t len);
-static Obj *parse_fn(Token **now);
+static Obj *find_var(const char *name, size_t len);
+static void parse_globals(Token **now);
+static void parse_fn(Token **now);
 static Node *parse_decl(Token **now);
 static Type *parse_declspec(Token **now);
 static Node *parse_declarator(Token **now, Type *dt);
@@ -36,18 +38,17 @@ static char *get_ident_str(Token *tok);
 static int64_t get_num_ival(Token *tok);
 
 static Obj *locals;
+static Obj *globals;
 
 Obj *
 parse(Token *tok)
 {
-    Obj dummy = {};
-    Obj *obj = &dummy;
+    globals = NULL;
 
-    // parse program as one or more function definitions
     while (tok->type != TT_END)
-        obj = obj->next = parse_fn(&tok);
+        (token_eq(tok, "fn") ? parse_fn : parse_globals)(&tok);
 
-    return dummy.next;
+    return globals;
 }
 
 static Node *
@@ -196,12 +197,27 @@ obj_local(Type *dt, const char *name)
 }
 
 static Obj *
+obj_global(Type *dt, const char *name)
+{
+    Obj *obj = new_obj(OT_GLOBAL);
+
+    obj->dt = dt;
+    obj->name = name;
+    obj->next = globals;
+    globals = obj;
+
+    return obj;
+}
+
+static Obj *
 obj_fn(const char *name)
 {
     Obj *obj = new_obj(OT_FN);
 
     obj->dt = new_type(DT_FN);
     obj->name = name;
+    obj->next = globals;
+    globals = obj;
 
     return obj;
 }
@@ -216,17 +232,41 @@ obj_params(Type *param)
 }
 
 static Obj *
-find_local(const char *name, size_t len)
+find_var(const char *name, size_t len)
 {
     for (Obj *obj = locals; obj; obj = obj->next)
         if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
             return obj;
+    for (Obj *obj = globals; obj; obj = obj->next)
+        if (strlen(obj->name) == len && !strncmp(name, obj->name, len) && obj->type == OT_GLOBAL)
+            return obj;
     return NULL;
+}
+
+// <globals> = <declspec> <ident> ("," <ident>)* ";"
+static void
+parse_globals(Token **now)
+{
+    Token *tok = *now;
+    Type *dt = parse_declspec(&tok);
+
+    if (token_eq(tok, ";"))
+        die("expected global variable identifier");
+
+    while (!token_eq(tok, ";"))
+    {
+        token_consume(&tok, ",");
+        obj_global(dt, get_ident_str(tok));
+        tok = tok->next;
+    }
+
+    *now = tok->next;
+    return;
 }
 
 // <fn> = "fn" <ident> "(" (<fn_params>)? ")" (<declspec>)? "{" <block_stmt>
 // <fn_params> = <declspec> <ident>("," <declspec> <ident>)*
-static Obj *
+static void
 parse_fn(Token **now)
 {
     Token *tok = *now;
@@ -267,7 +307,7 @@ parse_fn(Token **now)
     fn->locals = locals;
 
     *now = tok;
-    return fn;
+    return;
 }
 
 // <decl> = <declspec> <declarator>
@@ -315,7 +355,7 @@ parse_declarator(Token **now, Type *dt)
 
         if (tok->type != TT_IDENT)
             die("expected identifier in declarator, got %d", tok->type);
-        if (find_local(tok->pos, tok->len))
+        if (find_var(tok->pos, tok->len))
             die("identifier %.*s already declared", tok->len, tok->pos);
 
         Obj *local = obj_local(dt, get_ident_str(tok));
@@ -601,11 +641,11 @@ parse_primary(Token **now)
             return node;
         }
         // variable
-        Obj *local = find_local(tok->pos, tok->len);
-        if (!local)
+        Obj *var = find_var(tok->pos, tok->len);
+        if (!var)
             die("identifier %.*s not declared", tok->len, tok->pos);
         *now = tok->next;
-        return node_var(local);
+        return node_var(var);
     }
     if (tok->type == TT_NUM)
     {

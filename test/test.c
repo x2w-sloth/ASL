@@ -40,6 +40,7 @@ main()
         test_expr,
         test_flow,
         test_locals,
+        test_globals,
         test_pointer,
         test_function,
     };

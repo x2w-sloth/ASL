@@ -2,7 +2,7 @@
 #include "aslc.h"
 
 const Type type_none = { .type = DT_NONE };
-const Type type_i64  = { .type = DT_INT, .bits = 64 };
+const Type type_i64  = { .type = DT_INT, .size = 8, .bits = 64 };
 
 void
 add_dt(Node *node)

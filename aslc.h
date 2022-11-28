@@ -84,6 +84,7 @@ struct Node {
 
 typedef enum {
     OT_LOCAL,    // stack automatic variable
+    OT_GLOBAL,   // global variable
     OT_FN,       // function
 } ObjType;
 
@@ -114,8 +115,10 @@ typedef enum {
 struct Type {
     DataType type;
     Type *next;
-    int bits;
     const char *name;
+    int size;
+    // integer type, float type
+    int bits;
     // pointer type
     Type *base;
     // function type

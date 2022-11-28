@@ -1,5 +1,7 @@
 #include "aslc.h"
 
+static void gen_data(Obj *prog);
+static void gen_text(Obj *prog);
 static void gen_fn(Obj *fn);
 static void gen_stmt(Node *node);
 static void gen_expr(Node *node);
@@ -17,8 +19,32 @@ static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 void
 gen(Obj *prog)
 {
-    for (Obj *fn = prog; fn; fn = fn->next)
-        gen_fn(fn);
+    gen_data(prog);
+    gen_text(prog);
+}
+
+static void
+gen_data(Obj *prog)
+{
+    println("  .data");
+
+    for (Obj *obj = prog; obj; obj = obj->next)
+        if (obj->type == OT_GLOBAL)
+        {
+            println("  .globl %s", obj->name);
+            println("%s:", obj->name);
+            println("  .zero %d", obj->dt->size);
+        }
+}
+
+static void
+gen_text(Obj *prog)
+{
+    println("  .text");
+
+    for (Obj *obj = prog; obj; obj = obj->next)
+        if (obj->type == OT_FN)
+            gen_fn(obj);
 
     println("  .globl _start");
     println("_start:");
@@ -212,7 +238,12 @@ gen_addr(Node *node)
     switch (node->type)
     {
         case NT_VAR:
-            println("  lea  rax, [rbp - %d]", node->var->rbp_off);
+            if (node->var->type == OT_LOCAL)
+                println("  lea  rax, [rbp - %d]", node->var->rbp_off);
+            else if (node->var->type == OT_GLOBAL)
+                println("  lea  rax, [%s]", node->var->name);
+            else
+                die("bad variable type %d", node->var->type);
             break;
         case NT_DEREF:
             gen_expr(node->lch);
