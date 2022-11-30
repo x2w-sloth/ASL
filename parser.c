@@ -7,14 +7,15 @@
 static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *new_unary(NodeType type, Node *lch);
-static Node *node_var(Obj *var);
+static Node *node_var(const char *name);
 static Node *node_num(int64_t ival);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_global(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
 static void obj_params(Type *param);
-static Obj *find_var(const char *name, size_t len);
+static Obj *find_local(const char *name, size_t len);
+static Obj *find_global(const char *name, size_t len);
 static Obj *find_fn(const char *name, size_t len);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
@@ -101,11 +102,11 @@ new_unary(NodeType type, Node *lch)
 }
 
 static Node *
-node_var(Obj *var)
+node_var(const char *name)
 {
     Node *node = new_node(NT_VAR);
 
-    node->var = var;
+    node->var_name = name;
 
     return node;
 }
@@ -179,11 +180,17 @@ obj_params(Type *param)
 }
 
 static Obj *
-find_var(const char *name, size_t len)
+find_local(const char *name, size_t len)
 {
     for (Obj *obj = locals; obj; obj = obj->next)
         if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
             return obj;
+    return NULL;
+}
+
+static Obj *
+find_global(const char *name, size_t len)
+{
     for (Obj *obj = globals; obj; obj = obj->next)
         if (strlen(obj->name) == len && !strncmp(name, obj->name, len) && obj->type == OT_GLOBAL)
             return obj;
@@ -345,7 +352,7 @@ parse_declarator(Token **now, Type *dt)
 
         if (tok->type != TT_IDENT)
             die("expected identifier in declarator, got %d", tok->type);
-        if (find_var(tok->pos, tok->len))
+        if (find_local(tok->pos, tok->len))
             die("identifier %.*s already declared", tok->len, tok->pos);
 
         Obj *local = obj_local(dt, get_ident_str(tok));
@@ -355,8 +362,9 @@ parse_declarator(Token **now, Type *dt)
             continue;
 
         // assign value on declaration
-        Node *lch = node_var(local);
+        Node *lch = node_var(local->name);
         Node *rch = parse_assign(&tok);
+        lch->var = local;
         node = node->next = new_unary(NT_EXPR_STMT, new_binary(NT_ASSIGN, lch, rch));
     }
 
@@ -609,6 +617,7 @@ parse_primary(Token **now)
 {
     Token *tok = *now;
     Node *node;
+    Obj *var;
 
     // expression
     if (token_eq(tok, "("))
@@ -629,11 +638,11 @@ parse_primary(Token **now)
             return node;
         }
         // variable
-        Obj *var = find_var(tok->pos, tok->len);
-        if (!var)
-            die("identifier %.*s not declared", tok->len, tok->pos);
+        // if we can't find as local var, find as global var during semantics
+        node = node_var(get_ident_str(tok));
+        node->var = find_local(node->var_name, strlen(node->var_name));
         *now = tok->next;
-        return node_var(var);
+        return node;
     }
     if (tok->type == TT_NUM)
     {
@@ -703,7 +712,7 @@ semantics(Node **node_)
         semantics(stmt);
 
     // annotate data type for statement nodes and below
-    Obj *fn;
+    Obj *fn, *var;
     switch (node->type)
     {
         case NT_RET_STMT:
@@ -742,7 +751,16 @@ semantics(Node **node_)
             node->dt = type_pointer(node->lch->dt);
             return;
         case NT_VAR:
-            node->dt = node->var->dt;
+            if (node->var) // local variable
+            {
+                node->dt = node->var->dt;
+                return;
+            }
+            var = find_global(node->var_name, strlen(node->var_name));
+            if (!var)
+                die("identifier %s not declared", node->var_name);
+            node->var = var;
+            node->dt = var->dt;
             return;
         case NT_EQ:
         case NT_NE:

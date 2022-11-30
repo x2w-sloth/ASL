@@ -77,6 +77,7 @@ struct Node {
     Node *init, *cond, *iter, *br_if, *br_else;
     // variable
     Obj *var;
+    const char *var_name;
     // function call
     const char *fn_name;
     Node *fn_args;

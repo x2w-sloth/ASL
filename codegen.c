@@ -241,7 +241,7 @@ gen_addr(Node *node)
             if (node->var->type == OT_LOCAL)
                 println("  lea  rax, [rbp - %d]", node->var->rbp_off);
             else if (node->var->type == OT_GLOBAL)
-                println("  lea  rax, [%s]", node->var->name);
+                println("  lea  rax, [%s]", node->var_name);
             else
                 die("bad variable type %d", node->var->type);
             break;
