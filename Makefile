@@ -1,7 +1,7 @@
 
 all: aslc
 
-aslc: main.c lexer.c parser.c type.c codegen.c
+aslc: main.c lexer.c parser.c codegen.c
 	$(CC) $^ -o $@
 
 test: aslc FORCE

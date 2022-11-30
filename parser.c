@@ -1,21 +1,25 @@
 #include <string.h>
 #include "aslc.h"
 
+#define is_i64(T)       is_type_int((T), 64)
+#define is_ptr(T)       ((T)->type == DT_PTR)
+
 static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
 static Node *new_unary(NodeType type, Node *lch);
 static Node *node_var(Obj *var);
 static Node *node_num(int64_t ival);
-static Node *node_add(Node *lch, Node *rch);
-static Node *node_sub(Node *lch, Node *rch);
-static Node *node_mul(Node *lch, Node *rch);
-static Node *node_div(Node *lch, Node *rch);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_global(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
 static void obj_params(Type *param);
 static Obj *find_var(const char *name, size_t len);
+static Obj *find_fn(const char *name, size_t len);
+static Type *new_type(DataType type);
+static Type *copy_type(const Type *dt);
+static Type *type_pointer(Type *base);
+static bool is_type_int();
 static void parse_globals(Token **now);
 static void parse_fn(Token **now);
 static Node *parse_decl(Token **now);
@@ -36,17 +40,30 @@ static Node *parse_primary(Token **now);
 static Node *parse_fn_call(Token **now);
 static char *get_ident_str(Token *tok);
 static int64_t get_num_ival(Token *tok);
+static void semantics(Node **node);
+static void sem_add(Node **node);
+static void sem_sub(Node **node);
+static void sem_mul(Node **node);
+static void sem_div(Node **node);
 
 static Obj *locals;
 static Obj *globals;
+static const Type type_none = { .type = DT_NONE };
+static const Type type_i64  = { .type = DT_INT, .size = 8, .bits = 64 };
 
 Obj *
 parse(Token *tok)
 {
     globals = NULL;
 
+    // construct AST and allocate objects
     while (tok->type != TT_END)
         (token_eq(tok, "fn") ? parse_fn : parse_globals)(&tok);
+
+    // check type semantics and mutate AST as necessary
+    for (Obj *obj = globals; obj; obj = obj->next)
+        if (obj->type == OT_FN)
+            semantics(&obj->body);
 
     return globals;
 }
@@ -100,76 +117,6 @@ node_num(int64_t ival)
     node->ival = ival;
 
     return node;
-}
-
-static Node *
-node_add(Node *lch, Node *rch)
-{
-    add_dt(lch);
-    add_dt(rch);
-
-    // i64 + i64
-    if (is_i64(lch->dt) && is_i64(rch->dt))
-        return new_binary(NT_ADD, lch, rch);
-    // canonicalize i64 + ptr
-    if (is_i64(lch->dt) && is_ptr(rch->dt))
-    {
-        Node *tmp = lch;
-        lch = rch;
-        rch = tmp;
-    }
-    // ptr + i64
-    if (is_ptr(lch->dt) && is_i64(rch->dt))
-        return new_binary(NT_ADD, lch, new_binary(NT_MUL, rch, node_num(8)));
-
-    die("bad add between %d and %d", lch->dt->type, rch->dt->type);
-}
-
-static Node *
-node_sub(Node *lch, Node *rch)
-{
-    add_dt(lch);
-    add_dt(rch);
-
-    // i64 - i64
-    if (is_i64(lch->dt) && is_i64(rch->dt))
-        return new_binary(NT_SUB, lch, rch);
-    // ptr - i64
-    if (is_ptr(lch->dt) && is_i64(rch->dt))
-        return new_binary(NT_SUB, lch, new_binary(NT_MUL, rch, node_num(8)));
-    // ptr - ptr
-    if (is_ptr(lch->dt) && is_ptr(rch->dt))
-    {
-        Node *node = new_binary(NT_DIV, new_binary(NT_SUB, lch, rch), node_num(8));
-        node->dt = copy_type(&type_i64);
-        return node;
-    }
-
-    die("bad sub between %d and %d", lch->dt->type, rch->dt->type);
-}
-
-static Node *
-node_mul(Node *lch, Node *rch)
-{
-    add_dt(lch);
-    add_dt(rch);
-
-    if (is_i64(lch->dt) && is_i64(rch->dt))
-        return new_binary(NT_MUL, lch, rch);
-
-    die("bad mul between %d and %d", lch->dt->type, rch->dt->type);
-}
-
-static Node *
-node_div(Node *lch, Node *rch)
-{
-    add_dt(lch);
-    add_dt(rch);
-
-    if (is_i64(lch->dt) && is_i64(rch->dt))
-        return new_binary(NT_DIV, lch, rch);
-
-    die("bad div between %d and %d", lch->dt->type, rch->dt->type);
 }
 
 static Obj *
@@ -241,6 +188,49 @@ find_var(const char *name, size_t len)
         if (strlen(obj->name) == len && !strncmp(name, obj->name, len) && obj->type == OT_GLOBAL)
             return obj;
     return NULL;
+}
+
+static Obj *
+find_fn(const char *name, size_t len)
+{
+    for (Obj *obj = globals; obj; obj = obj->next)
+        if (strlen(obj->name) == len && !strncmp(name, obj->name, len) && obj->type == OT_FN)
+            return obj;
+    return NULL;
+}
+
+static Type *
+new_type(DataType type)
+{
+    Type *dt = xmalloc(sizeof(Type));
+    memset(dt, 0, sizeof(Type));
+    dt->type = type;
+
+    return dt;
+}
+
+static Type *
+copy_type(const Type *dt)
+{
+    Type *ndt = xmalloc(sizeof(Type));
+    *ndt = *dt;
+
+    return ndt;
+}
+
+static Type *
+type_pointer(Type *base)
+{
+    Type *dt = new_type(DT_PTR);
+    dt->base = base;
+
+    return dt;
+}
+
+static bool
+is_type_int(const Type *dt, int bits)
+{
+    return dt->type == DT_INT && dt->bits == bits;
 }
 
 // <globals> = <declspec> <ident> ("," <ident>)* ";"
@@ -406,10 +396,8 @@ parse_block_stmt(Token **now)
     {
         if (token_eq(tok, "i64"))
             node = node->next = parse_decl(&tok);
-        else {
+        else
             node = node->next = parse_stmt(&tok);
-            add_dt(node);
-        }
     }
 
     node = new_node(NT_BLOCK_STMT);
@@ -545,13 +533,13 @@ parse_add(Token **now)
         if (token_eq(tok, "+"))
         {
             tok = tok->next;
-            node = node_add(node, parse_mul(&tok));
+            node = new_binary(NT_ADD, node, parse_mul(&tok));
             continue;
         }
         if (token_eq(tok, "-"))
         {
             tok = tok->next;
-            node = node_sub(node, parse_mul(&tok));
+            node = new_binary(NT_SUB, node, parse_mul(&tok));
             continue;
         }
         break;
@@ -573,13 +561,13 @@ parse_mul(Token **now)
         if (token_eq(tok, "*"))
         {
             tok = tok->next;
-            node = node_mul(node, parse_unary(&tok));
+            node = new_binary(NT_MUL, node, parse_unary(&tok));
             continue;
         }
         if (token_eq(tok, "/"))
         {
             tok = tok->next;
-            node = node_div(node, parse_unary(&tok));
+            node = new_binary(NT_DIV, node, parse_unary(&tok));
             continue;
         }
         break;
@@ -694,4 +682,160 @@ get_num_ival(Token *tok)
     if (tok->type != TT_NUM)
         die("expected numeric token");
     return tok->ival;
+}
+
+static void
+semantics(Node **node_)
+{
+    Node *node = *node_;
+
+    if (!node || node->dt)
+        return;
+
+    semantics(&node->lch);
+    semantics(&node->rch);
+    semantics(&node->init);
+    semantics(&node->cond);
+    semantics(&node->iter);
+    semantics(&node->br_if);
+    semantics(&node->br_else);
+    for (Node **stmt = &node->block; *stmt; stmt = &(*stmt)->next)
+        semantics(stmt);
+
+    // annotate data type for statement nodes and below
+    Obj *fn;
+    switch (node->type)
+    {
+        case NT_RET_STMT:
+        case NT_EXPR_STMT:
+        case NT_IF_STMT:
+        case NT_FOR_STMT:
+        case NT_BLOCK_STMT:
+            node->dt = copy_type(&type_none);
+            return;
+        case NT_ADD:
+            sem_add(node_);
+            node->dt = node->lch->dt;
+            return;
+        case NT_SUB:
+            sem_sub(node_);
+            node->dt = node->lch->dt;
+            return;
+        case NT_MUL:
+            sem_mul(node_);
+            node->dt = node->lch->dt;
+            return;
+        case NT_DIV:
+            sem_div(node_);
+            node->dt = node->lch->dt;
+            return;
+        case NT_NEG:
+        case NT_ASSIGN:
+            node->dt = node->lch->dt;
+            return;
+        case NT_DEREF:
+            if (node->lch->dt->type != DT_PTR)
+                die("attempt to deref a non-pointer");
+            node->dt = node->lch->dt->base;
+            return;
+        case NT_ADDR:
+            node->dt = type_pointer(node->lch->dt);
+            return;
+        case NT_VAR:
+            node->dt = node->var->dt;
+            return;
+        case NT_EQ:
+        case NT_NE:
+        case NT_LT:
+        case NT_LE:
+        case NT_NUM:
+            node->dt = copy_type(&type_i64);
+            return;
+        case NT_FN_CALL:
+            fn = find_fn(node->fn_name, strlen(node->fn_name));
+            if (!fn || fn->type != OT_FN)
+                die("function %s not found", node->fn_name);
+            node->dt = fn->dt->ret;
+            return;
+        default:
+            die("can not annotate data type for node %d", node->type);
+    }
+}
+
+static void
+sem_add(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    // i64 + i64
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return;
+    // canonicalize i64 + ptr
+    if (is_i64(lch->dt) && is_ptr(rch->dt))
+    {
+        Node *tmp = node->lch;
+        node->lch = node->rch;
+        node->rch = tmp;
+    }
+    // ptr + i64
+    if (is_ptr(lch->dt) && is_i64(rch->dt))
+    {
+        node->rch = new_binary(NT_MUL, rch, node_num(8));
+        node->rch->dt = copy_type(&type_i64); //
+        return;
+    }
+
+    die("bad add between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_sub(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    // i64 - i64
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return;
+    // ptr - i64
+    if (is_ptr(lch->dt) && is_i64(rch->dt))
+    {
+        node->rch = new_binary(NT_MUL, rch, node_num(8));
+        node->rch->dt = copy_type(&type_i64); //
+        return;
+    }
+    // ptr - ptr
+    if (is_ptr(lch->dt) && is_ptr(rch->dt))
+    {
+        *node_ = new_binary(NT_DIV, node, node_num(8));
+        (*node_)->dt = copy_type(&type_i64);
+        return;
+    }
+
+    die("bad sub between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_mul(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return;
+
+    die("bad mul between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_div(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    if (is_i64(lch->dt) && is_i64(rch->dt))
+        return;
+
+    die("bad div between %d and %d", lch->dt->type, rch->dt->type);
 }
