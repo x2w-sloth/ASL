@@ -41,6 +41,7 @@ main()
         test_flow,
         test_locals,
         test_globals,
+        test_scopes,
         test_pointer,
         test_function,
     };
