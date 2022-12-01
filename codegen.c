@@ -70,12 +70,14 @@ gen_text(Scope *sc)
 static void
 gen_fn(Obj *fn)
 {
+    const char *name = get_fullname(fn->name, fn->scope);
+
     fn_now = fn;
     assign_locals(fn);
 
     // fn prologue
-    println("  .globl %s", fn->name);
-    println("%s:", fn->name);
+    println("  .globl %s", name);
+    println("%s:", name);
     println("  push rbp");
     println("  mov  rbp, rsp");
     println("  sub  rsp, %d", fn->stack_size);
@@ -93,7 +95,7 @@ gen_fn(Obj *fn)
     }
 
     // fn epilogue
-    println("ret.%s:", fn->name);
+    println("ret.%s:", name);
     println("  mov  rsp, rbp");
     println("  pop  rbp");
     println("  ret");
@@ -108,7 +110,7 @@ gen_stmt(Node *node)
     {
         case NT_RET_STMT:
             gen_stmt(node->lch);
-            println("  jmp  ret.%s", fn_now->name);
+            println("  jmp  ret.%s", get_fullname(fn_now->name, fn_now->scope));
             break;
         case NT_BLOCK_STMT:
             for (Node *stmt = node->block; stmt; stmt = stmt->next)
@@ -190,7 +192,7 @@ gen_expr(Node *node)
             for (int i = nargs - 1; i >= 0; i--)
                 pop(arg64[i]);
             println("  xor  rax, rax");
-            println("  call %s", node->fn_name);
+            println("  call %s", get_fullname(node->fn_name, node->scope));
             return;
         case NT_DEREF:
             gen_expr(node->lch);

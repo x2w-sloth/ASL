@@ -116,6 +116,7 @@ struct Obj {
     ObjType type;
     Obj *next;
     Type *dt;
+    Scope *scope;
     const char *name;
     // local variable
     int rbp_off;

@@ -18,17 +18,19 @@ static Path *new_path(const char *name);
 static Scope *new_scope(const char *name);
 static void scope_enter(Scope *sc);
 static void scope_leave(void);
+static void scope_semantics(Scope *sc);
 static Scope *scope_lookup(const Path *path);
 static BlockScope *new_block_scope();
 static void block_scope_enter();
 static void block_scope_leave();
 static Obj *find_local(const char *name, size_t len);
 static Obj *find_global(const char *name, size_t len, const Path *path);
-static Obj *find_fn(const char *name, size_t len);
+static Obj *find_fn(const char *name, size_t len, const Path *path);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
 static bool is_type_int();
+static bool is_fn_call(Token *tok);
 static void parse_scope(Token **now);
 static void parse_globals(Token **now);
 static void parse_fn(Token **now);
@@ -80,9 +82,7 @@ parse(Token *tok)
     }
 
     // check type semantics and mutate AST as necessary
-    // TODO: scope semantics
-    for (Obj *fn = sc_root.fns; fn; fn = fn->next)
-        semantics(&fn->body);
+    scope_semantics(&sc_root);
 
     if (sc_now != &sc_root)
         die("scope depth error");
@@ -190,6 +190,7 @@ obj_fn(const char *name)
     Obj *obj = new_obj(OT_FN);
 
     obj->dt = new_type(DT_FN);
+    obj->scope = sc_now;
     obj->name = name;
     obj->next = sc_now->fns;
     sc_now->fns = obj;
@@ -246,6 +247,20 @@ static void
 scope_leave(void)
 {
     sc_now = sc_now->parent;
+}
+
+static void
+scope_semantics(Scope *sc)
+{
+    if (!sc)
+        return;
+
+    for (Obj *fn = sc->fns; fn; fn = fn->next)
+        semantics(&fn->body);
+
+    sc = sc->children;
+    for (Scope *s = sc; s; s = s->next)
+        scope_semantics(s);
 }
 
 static Scope *
@@ -315,9 +330,11 @@ find_global(const char *name, size_t len, const Path *path)
 }
 
 static Obj *
-find_fn(const char *name, size_t len)
+find_fn(const char *name, size_t len, const Path *path)
 {
-    for (Obj *obj = sc_root.fns; obj; obj = obj->next)
+    Scope *sc = scope_lookup(path);
+
+    for (Obj *obj = sc->fns; obj; obj = obj->next)
         if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
             return obj;
     return NULL;
@@ -355,6 +372,14 @@ static bool
 is_type_int(const Type *dt, int bits)
 {
     return dt->type == DT_INT && dt->bits == bits;
+}
+
+static bool
+is_fn_call(Token *tok)
+{
+    while (tok->type == TT_IDENT && token_eq(tok->next, ":"))
+        tok = tok->next->next;
+    return token_eq(tok->next, "(");
 }
 
 // <scope> = "scope" <ident> "{" (<scope> | <fn> | <globals>)* "}"
@@ -786,7 +811,7 @@ parse_primary(Token **now)
     if (tok->type == TT_IDENT)
     {
         // function call
-        if (token_eq(tok->next, "("))
+        if (is_fn_call(tok))
         {
             node = parse_fn_call(&tok);
             *now = tok;
@@ -806,15 +831,28 @@ parse_primary(Token **now)
     die("bad primary from token %d", tok->type);
 }
 
-// <fn_call> = <ident> "(" (<assign> ("," <assign>)*)? ")"
+// <fn_call> = (<ident> ":")* <ident> "(" (<assign> ("," <assign>)*)? ")"
 static Node *
 parse_fn_call(Token **now)
 {
-    Token *iden = *now;
-    Token *tok = (*now)->next->next;
-    Node dummy = {};
-    Node *node = &dummy;
+    Token *tok = *now;
+    Path dummy_path = {};
+    Path *path = &dummy_path; 
+    Node dummy_node = {};
+    Node *node = &dummy_node;
+    const char *fn_name;
 
+    // parse fn scopes
+    while (token_eq(tok->next, ":"))
+    {
+        path = path->next = new_path(get_ident_str(tok));
+        tok = tok->next->next;
+    }
+    fn_name = get_ident_str(tok);
+    tok = tok->next;
+
+    // parse fn args
+    token_assert_consume(&tok, "(");
     while (!token_eq(tok, ")"))
     {
         token_consume(&tok, ",");
@@ -822,11 +860,13 @@ parse_fn_call(Token **now)
     }
 
     token_assert_consume(&tok, ")");
-    *now = tok;
 
     node = new_node(NT_FN_CALL);
-    node->fn_name = get_ident_str(iden);
-    node->fn_args = dummy.next;
+    node->path = dummy_path.next;
+    node->fn_name = fn_name;
+    node->fn_args = dummy_node.next;
+
+    *now = tok;
     return node;
 }
 
@@ -951,10 +991,11 @@ semantics(Node **node_)
             node->dt = copy_type(&type_i64);
             return;
         case NT_FN_CALL:
-            fn = find_fn(node->fn_name, strlen(node->fn_name));
-            if (!fn || fn->type != OT_FN)
+            fn = find_fn(node->fn_name, strlen(node->fn_name), node->path);
+            if (!fn)
                 die("function %s not found", node->fn_name);
             node->dt = fn->dt->ret;
+            node->scope = scope_lookup(node->path);
             return;
         default:
             die("can not annotate data type for node %d", node->type);
