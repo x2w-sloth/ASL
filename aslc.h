@@ -10,6 +10,7 @@
 #define COUNT(A)     (sizeof(A) / sizeof(*(A)))
 
 typedef struct Token Token;
+typedef struct BlockScope BlockScope;
 typedef struct Scope Scope;
 typedef struct Path Path;
 typedef struct Node Node;
@@ -43,6 +44,11 @@ void token_assert_consume(Token **tok, const char *str);
 bool token_appears_before(const Token *tok, const char *pat, const char *end);
 
 // parser.c
+
+struct BlockScope {
+    BlockScope *next;
+    Obj *locals;
+};
 
 // user named scopes
 struct Scope {
@@ -113,6 +119,7 @@ struct Obj {
     const char *name;
     // local variable
     int rbp_off;
+    Obj *bnext;    // next local var in the same blockscope
     // function
     int stack_size;
     Node *body;

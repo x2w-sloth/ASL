@@ -19,6 +19,9 @@ static Scope *new_scope(const char *name);
 static void scope_enter(Scope *sc);
 static void scope_leave(void);
 static Scope *scope_lookup(const Path *path);
+static BlockScope *new_block_scope();
+static void block_scope_enter();
+static void block_scope_leave();
 static Obj *find_local(const char *name, size_t len);
 static Obj *find_global(const char *name, size_t len, const Path *path);
 static Obj *find_fn(const char *name, size_t len);
@@ -55,6 +58,7 @@ static void sem_mul(Node **node);
 static void sem_div(Node **node);
 
 static Obj *locals;
+static BlockScope *bsc_now;
 static Scope *sc_now, sc_root;
 static const Type type_none = { .type = DT_NONE };
 static const Type type_i64  = { .type = DT_INT, .size = 8, .bits = 64 };
@@ -154,10 +158,14 @@ obj_local(Type *dt, const char *name)
 {
     Obj *obj = new_obj(OT_LOCAL);
 
+    // local vars live in blockscopes
     obj->dt = dt;
     obj->name = name;
     obj->next = locals;
     locals = obj;
+
+    obj->bnext = bsc_now->locals;
+    bsc_now->locals = obj;
 
     return obj;
 }
@@ -167,6 +175,7 @@ obj_global(Type *dt, const char *name)
 {
     Obj *obj = new_obj(OT_GLOBAL);
 
+    // global vars live in named scopes, or the root scope
     obj->dt = dt;
     obj->name = name;
     obj->next = sc_now->globals;
@@ -259,12 +268,37 @@ scope_lookup(const Path *p)
     return sc;
 }
 
+static BlockScope *
+new_block_scope()
+{
+    BlockScope *bsc = xmalloc(sizeof(BlockScope));
+    memset(bsc, 0, sizeof(BlockScope));
+
+    return bsc;
+}
+
+static void
+block_scope_enter()
+{
+    BlockScope *bsc = new_block_scope();
+
+    bsc->next = bsc_now;
+    bsc_now = bsc;
+}
+
+static void
+block_scope_leave()
+{
+    bsc_now = bsc_now->next;
+}
+
 static Obj *
 find_local(const char *name, size_t len)
 {
-    for (Obj *obj = locals; obj; obj = obj->next)
-        if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
-            return obj;
+    for (BlockScope *bsc = bsc_now; bsc; bsc = bsc->next)
+        for (Obj *obj = bsc->locals; obj; obj = obj->bnext)
+            if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
+                return obj;
     return NULL;
 }
 
@@ -399,6 +433,8 @@ parse_fn(Token **now)
     }
     token_assert_consume(&tok, ")");
 
+    block_scope_enter();
+
     // allocate fn parameters as locals
     locals = NULL;
     obj_params(dummy.next);
@@ -415,6 +451,8 @@ parse_fn(Token **now)
     // parse fn body
     fn->body = parse_block_stmt(&tok);
     fn->locals = locals;
+
+    block_scope_leave();
 
     *now = tok;
     return;
@@ -513,6 +551,8 @@ parse_block_stmt(Token **now)
     Node dummy = {};
     Node *node = &dummy;
 
+    block_scope_enter();
+
     while (!token_eq(tok, "}"))
     {
         if (token_eq(tok, "i64"))
@@ -520,6 +560,8 @@ parse_block_stmt(Token **now)
         else
             node = node->next = parse_stmt(&tok);
     }
+
+    block_scope_leave();
 
     node = new_node(NT_BLOCK_STMT);
     node->block = dummy.next;
