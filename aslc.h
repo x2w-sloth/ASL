@@ -10,6 +10,8 @@
 #define COUNT(A)     (sizeof(A) / sizeof(*(A)))
 
 typedef struct Token Token;
+typedef struct Scope Scope;
+typedef struct Path Path;
 typedef struct Node Node;
 typedef struct Obj Obj;
 typedef struct Type Type;
@@ -42,6 +44,19 @@ bool token_appears_before(const Token *tok, const char *pat, const char *end);
 
 // parser.c
 
+// user named scopes
+struct Scope {
+    Scope *parent, *children, *next;
+    const char *name;
+    Obj *globals, *fns;
+};
+
+// scope lookup path
+struct Path {
+    Path *next;
+    const char *name;
+};
+
 typedef enum {
     NT_NUM,
     NT_VAR,
@@ -69,6 +84,8 @@ struct Node {
     NodeType type;
     Node *lch, *rch, *next;
     Type *dt;
+    Path *path;
+    Scope *scope;
     // number
     int64_t ival;
     // block statement
@@ -123,23 +140,33 @@ struct Type {
     Type *ret;
 };
 
-Obj *parse(Token *tok);
+Scope *parse(Token *tok);
 
 // codegen.c
 
-void gen(Obj *prog);
+void gen(Scope *prog);
 
 // main.c
 
-#define println(...)    fprintln(stdout, __VA_ARGS__)
-#define eprintln(...)   fprintln(stderr, __VA_ARGS__)
-#define die(...)               \
-    do {                       \
-        eprintln(__VA_ARGS__); \
-        exit(EXIT_FAILURE);    \
+#define print(...)                    \
+    fprint(stdout, __VA_ARGS__)
+#define println(...)                  \
+    do {                              \
+        fprint(stdout, __VA_ARGS__);  \
+        fputc('\n', stdout);          \
+    } while (0)
+#define eprintln(...)                 \
+    do {                              \
+        fprint(stderr, __VA_ARGS__);  \
+        fputc('\n', stderr);          \
+    } while (0)
+#define die(...)                      \
+    do {                              \
+        eprintln(__VA_ARGS__);        \
+        exit(EXIT_FAILURE);           \
     } while (0)
 
-void fprintln(FILE *file, const char *fmt, ...);
+void fprint(FILE *file, const char *fmt, ...);
 void *xmalloc(size_t size);
 
 #endif // ASLC_H

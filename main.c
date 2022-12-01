@@ -6,14 +6,13 @@
 _Static_assert (sizeof(int) == 4, "platform int is not 32-bit");
 
 void
-fprintln(FILE *file, const char *fmt, ...)
+fprint(FILE *file, const char *fmt, ...)
 {
     va_list ap;
 
     va_start(ap, fmt);
     vfprintf(file, fmt, ap);
     va_end(ap);
-    fputc('\n', file);
 }
 
 void *
@@ -34,8 +33,8 @@ main(int argc, char **argv)
         die("usage: %s <source>", argv[0]);
 
     Token *tok = tokenize(argv[1]);
-    Obj *fn = parse(tok);
-    gen(fn);
+    Scope *prog = parse(tok);
+    gen(prog);
 
     return 0;
 }

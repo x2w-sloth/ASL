@@ -163,7 +163,7 @@ read_ident(const char *pos)
 static bool
 is_keyword(const Token *tok)
 {
-    static const char *keywords[] = { "return", "if", "else", "for" };
+    static const char *keywords[] = { "return", "if", "else", "for", "scope" };
 
     for (int i = 0; i < COUNT(keywords); i++)
         if (token_eq(tok, keywords[i]))

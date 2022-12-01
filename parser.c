@@ -14,13 +14,19 @@ static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_global(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
 static void obj_params(Type *param);
+static Path *new_path(const char *name);
+static Scope *new_scope(const char *name);
+static void scope_enter(Scope *sc);
+static void scope_leave(void);
+static Scope *scope_lookup(const Path *path);
 static Obj *find_local(const char *name, size_t len);
-static Obj *find_global(const char *name, size_t len);
+static Obj *find_global(const char *name, size_t len, const Path *path);
 static Obj *find_fn(const char *name, size_t len);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
 static bool is_type_int();
+static void parse_scope(Token **now);
 static void parse_globals(Token **now);
 static void parse_fn(Token **now);
 static Node *parse_decl(Token **now);
@@ -39,6 +45,7 @@ static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
 static Node *parse_primary(Token **now);
 static Node *parse_fn_call(Token **now);
+static Node *parse_var(Token **now);
 static char *get_ident_str(Token *tok);
 static int64_t get_num_ival(Token *tok);
 static void semantics(Node **node);
@@ -48,25 +55,36 @@ static void sem_mul(Node **node);
 static void sem_div(Node **node);
 
 static Obj *locals;
-static Obj *globals;
+static Scope *sc_now, sc_root;
 static const Type type_none = { .type = DT_NONE };
 static const Type type_i64  = { .type = DT_INT, .size = 8, .bits = 64 };
 
-Obj *
+Scope *
 parse(Token *tok)
 {
-    globals = NULL;
+    scope_enter(&sc_root);
 
     // construct AST and allocate objects
     while (tok->type != TT_END)
-        (token_eq(tok, "fn") ? parse_fn : parse_globals)(&tok);
+    {
+        if (token_eq(tok, "scope"))
+            parse_scope(&tok);
+        else if (token_eq(tok, "fn"))
+            parse_fn(&tok);
+        else
+            parse_globals(&tok);
+    }
 
     // check type semantics and mutate AST as necessary
-    for (Obj *obj = globals; obj; obj = obj->next)
-        if (obj->type == OT_FN)
-            semantics(&obj->body);
+    // TODO: scope semantics
+    for (Obj *fn = sc_root.fns; fn; fn = fn->next)
+        semantics(&fn->body);
 
-    return globals;
+    if (sc_now != &sc_root)
+        die("scope depth error");
+    scope_leave();
+
+    return &sc_root;
 }
 
 static Node *
@@ -151,8 +169,8 @@ obj_global(Type *dt, const char *name)
 
     obj->dt = dt;
     obj->name = name;
-    obj->next = globals;
-    globals = obj;
+    obj->next = sc_now->globals;
+    sc_now->globals = obj;
 
     return obj;
 }
@@ -164,8 +182,8 @@ obj_fn(const char *name)
 
     obj->dt = new_type(DT_FN);
     obj->name = name;
-    obj->next = globals;
-    globals = obj;
+    obj->next = sc_now->fns;
+    sc_now->fns = obj;
 
     return obj;
 }
@@ -179,6 +197,68 @@ obj_params(Type *param)
     }
 }
 
+static Path *
+new_path(const char *name)
+{
+    Path *path = xmalloc(sizeof(Path));
+    memset(path, 0, sizeof(Path));
+
+    path->name = name;
+
+    return path;
+}
+
+static Scope *
+new_scope(const char *name)
+{
+    Scope *sc = xmalloc(sizeof(Scope));
+    memset(sc, 0, sizeof(Scope));
+    
+    sc->name = name;
+    sc->parent = sc_now;
+
+    return sc;
+}
+
+static void
+scope_enter(Scope *sc)
+{
+    if (sc_now)
+    {
+        sc->next = sc_now->children;
+        sc_now->children = sc;
+    }
+
+    sc->parent = sc_now;
+    sc_now = sc;
+}
+
+static void
+scope_leave(void)
+{
+    sc_now = sc_now->parent;
+}
+
+static Scope *
+scope_lookup(const Path *p)
+{
+    Scope *sc = &sc_root, *s;
+
+    while (p)
+    {
+        for (s = sc->children; s; s = s->next)
+            if (!strcmp(s->name, p->name))
+            {
+                p = p->next;
+                sc = s;
+                break;
+            }
+        if (!s)
+            break;
+    }
+    return sc;
+}
+
 static Obj *
 find_local(const char *name, size_t len)
 {
@@ -189,19 +269,22 @@ find_local(const char *name, size_t len)
 }
 
 static Obj *
-find_global(const char *name, size_t len)
+find_global(const char *name, size_t len, const Path *path)
 {
-    for (Obj *obj = globals; obj; obj = obj->next)
-        if (strlen(obj->name) == len && !strncmp(name, obj->name, len) && obj->type == OT_GLOBAL)
+    Scope *sc = scope_lookup(path);
+
+    for (Obj *obj = sc->globals; obj; obj = obj->next)
+        if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
             return obj;
+
     return NULL;
 }
 
 static Obj *
 find_fn(const char *name, size_t len)
 {
-    for (Obj *obj = globals; obj; obj = obj->next)
-        if (strlen(obj->name) == len && !strncmp(name, obj->name, len) && obj->type == OT_FN)
+    for (Obj *obj = sc_root.fns; obj; obj = obj->next)
+        if (strlen(obj->name) == len && !strncmp(name, obj->name, len))
             return obj;
     return NULL;
 }
@@ -238,6 +321,36 @@ static bool
 is_type_int(const Type *dt, int bits)
 {
     return dt->type == DT_INT && dt->bits == bits;
+}
+
+// <scope> = "scope" <ident> "{" (<scope> | <fn> | <globals>)* "}"
+static void
+parse_scope(Token **now)
+{
+    Token *tok = *now;
+    Scope *sc;
+    
+    token_assert_consume(&tok, "scope");
+    sc = new_scope(get_ident_str(tok));
+    tok = tok->next;
+    token_assert_consume(&tok, "{");
+
+    scope_enter(sc);
+
+    while (!token_consume(&tok, "}"))
+    {
+        if (token_eq(tok, "scope"))
+            parse_scope(&tok);
+        else if (token_eq(tok, "fn"))
+            parse_fn(&tok);
+        else
+            parse_globals(&tok);
+    }
+
+    scope_leave();
+
+    *now = tok;
+    return;
 }
 
 // <globals> = <declspec> <ident> ("," <ident>)* ";"
@@ -610,7 +723,7 @@ parse_unary(Token **now)
 
 // <primary> = "(" <expr> ")"
 //           | <fn_call>
-//           | <ident>
+//           | <var>
 //           | <num>
 static Node *
 parse_primary(Token **now)
@@ -638,10 +751,8 @@ parse_primary(Token **now)
             return node;
         }
         // variable
-        // if we can't find as local var, find as global var during semantics
-        node = node_var(get_ident_str(tok));
-        node->var = find_local(node->var_name, strlen(node->var_name));
-        *now = tok->next;
+        node = parse_var(&tok);
+        *now = tok;
         return node;
     }
     if (tok->type == TT_NUM)
@@ -674,6 +785,33 @@ parse_fn_call(Token **now)
     node = new_node(NT_FN_CALL);
     node->fn_name = get_ident_str(iden);
     node->fn_args = dummy.next;
+    return node;
+}
+
+// <var> = (<ident> ":")* <ident>
+static Node *
+parse_var(Token **now)
+{
+    Token *tok = *now;
+    Node *node;
+    Path dummy = {};
+    Path *path = &dummy; 
+
+    // parse variable scopes
+    while (token_eq(tok->next, ":"))
+    {
+        path = path->next = new_path(get_ident_str(tok));
+        tok = tok->next->next;
+    }
+    node = node_var(get_ident_str(tok));
+    node->path = dummy.next;
+
+    // an unscoped variable can be local var or root global var
+    // if we can't find as local var now, find as global var during semantics
+    if (!node->path)
+        node->var = find_local(node->var_name, strlen(node->var_name));
+
+    *now = tok->next;
     return node;
 }
 
@@ -756,9 +894,10 @@ semantics(Node **node_)
                 node->dt = node->var->dt;
                 return;
             }
-            var = find_global(node->var_name, strlen(node->var_name));
+            var = find_global(node->var_name, strlen(node->var_name), node->path);
             if (!var)
                 die("identifier %s not declared", node->var_name);
+            node->scope = scope_lookup(node->path);
             node->var = var;
             node->dt = var->dt;
             return;

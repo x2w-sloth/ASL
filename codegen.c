@@ -1,13 +1,15 @@
+#include <string.h>
 #include "aslc.h"
 
-static void gen_data(Obj *prog);
-static void gen_text(Obj *prog);
+static void gen_data(Scope *sc);
+static void gen_text(Scope *sc);
 static void gen_fn(Obj *fn);
 static void gen_stmt(Node *node);
 static void gen_expr(Node *node);
 static void gen_addr(Node *node);
 static void push();
 static void pop(const char *reg);
+static char *get_fullname(const char *name, const Scope *sc);
 static void assign_locals(Obj *fn);
 static int align_to(int n, int align);
 static int new_id();
@@ -17,41 +19,52 @@ static Obj *fn_now;
 static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
 void
-gen(Obj *prog)
+gen(Scope *sc_root)
 {
-    gen_data(prog);
-    gen_text(prog);
-}
-
-static void
-gen_data(Obj *prog)
-{
+    // .data section
     println("  .data");
+    gen_data(sc_root);
 
-    for (Obj *obj = prog; obj; obj = obj->next)
-        if (obj->type == OT_GLOBAL)
-        {
-            println("  .globl %s", obj->name);
-            println("%s:", obj->name);
-            println("  .zero %d", obj->dt->size);
-        }
-}
-
-static void
-gen_text(Obj *prog)
-{
+    // .text section
     println("  .text");
+    gen_text(sc_root);
 
-    for (Obj *obj = prog; obj; obj = obj->next)
-        if (obj->type == OT_FN)
-            gen_fn(obj);
-
+    // entry point
     println("  .globl _start");
     println("_start:");
     println("  call main");
     println("  mov  rdi, rax");
     println("  mov  rax, 0x3C");
     println("  syscall");
+}
+
+static void
+gen_data(Scope *sc)
+{
+    if (!sc)
+        return;
+
+    for (Scope *s = sc; s; s = s->next)
+        for (Obj *obj = s->globals; obj; obj = obj->next)
+        {
+            const char *name = get_fullname(obj->name, s);
+            println("  .globl %s", name);
+            println("%s:", name);
+            println("  .zero %d", obj->dt->size);
+        }
+    gen_data(sc->children);
+}
+
+static void
+gen_text(Scope *sc)
+{
+    if (!sc)
+        return;
+
+    for (Scope *s = sc; s; s = s->next)
+        for (Obj *obj = s->fns; obj; obj = obj->next)
+            gen_fn(obj);
+    gen_text(sc->children);
 }
 
 static void
@@ -241,7 +254,7 @@ gen_addr(Node *node)
             if (node->var->type == OT_LOCAL)
                 println("  lea  rax, [rbp - %d]", node->var->rbp_off);
             else if (node->var->type == OT_GLOBAL)
-                println("  lea  rax, [%s]", node->var_name);
+                println("  lea  rax, [%s]", get_fullname(node->var_name, node->scope));
             else
                 die("bad variable type %d", node->var->type);
             break;
@@ -265,6 +278,21 @@ pop(const char *reg)
 {
     println("  pop  %s", reg);
     --depth;
+}
+
+static char *
+get_fullname(const char *name, const Scope *sc)
+{
+    static char buf[512];
+
+    strncpy(buf, name, 512);
+    for (int i = strlen(name); i < 512 && sc && sc->name; i += strlen(sc->name), sc = sc->parent)
+    {
+        buf[i++] = '.';
+        strncpy(buf + i, sc->name, 512 - i);
+    }
+
+    return buf;
 }
 
 static void
