@@ -176,5 +176,6 @@ void gen(Scope *prog);
 
 void fprint(FILE *file, const char *fmt, ...);
 void *xmalloc(size_t size);
+void *xrealloc(void *ptr, size_t size);
 
 #endif // ASLC_H

@@ -5,19 +5,51 @@
 
 typedef bool (*test_fn)(void);
 
+static bool validate(int val);
+
 bool
 str_test(int val, const char *src)
 {
     static char cmd[512];
-    int status;
 
-    printf("%s", src);
+    printf("  %s", src);
 
     // compile ASL source string
-    snprintf(cmd, sizeof(cmd), "./aslc \"%s\" > tmp.s", src);
-    assert(system(cmd) == 0);
-    assert(system("as tmp.s -o tmp.o -msyntax=intel -mnaked-reg") == 0);
-    assert(system("ld tmp.o -o tmp") == 0);
+    snprintf(cmd, sizeof(cmd), "echo \"%s\" | ./aslc - > tmp.s", src);
+
+    if (system(cmd) != 0)
+      perror("failed to compile program");
+
+    return validate(val);
+}
+
+bool
+file_test(int val, const char *path)
+{
+    static char cmd[512];
+
+    printf("  %s", path);
+
+    // compile ASL source file
+    snprintf(cmd, sizeof(cmd), "./aslc %s > tmp.s", path);
+
+    if (system(cmd) != 0)
+      perror("failed to compile program");
+
+    return validate(val);
+}
+
+static bool
+validate(int val)
+{
+    int status;
+
+    // assmeble and link asm source at ./tmp.s
+    if (system("as tmp.s -o tmp.o -msyntax=intel -mnaked-reg") != 0)
+      perror("failed to assemble program");
+
+    if (system("ld tmp.o -o tmp") != 0)
+      perror("failed to link program");
 
     // run compiled binary
     status = system("./tmp") >> 8;
