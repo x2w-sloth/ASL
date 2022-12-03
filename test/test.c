@@ -72,6 +72,7 @@ main()
         test_expr,
         test_flow,
         test_locals,
+        test_arrays,
         test_globals,
         test_scopes,
         test_pointer,

@@ -48,6 +48,7 @@ static Node *parse_cmp(Token **now);
 static Node *parse_add(Token **now);
 static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
+static Node *parse_index(Token **now);
 static Node *parse_primary(Token **now);
 static Node *parse_fn_call(Token **now);
 static Node *parse_var(Token **now);
@@ -58,6 +59,7 @@ static void sem_add(Node **node);
 static void sem_sub(Node **node);
 static void sem_mul(Node **node);
 static void sem_div(Node **node);
+static void sem_idx(Node **node);
 
 static Obj *locals;
 static BlockScope *bsc_now;
@@ -766,7 +768,7 @@ parse_mul(Token **now)
 }
 
 // <unary> = ("+" | "-" | "*" | "&") <unary>
-//         | <primary>
+//         | <index>
 static Node *
 parse_unary(Token **now)
 {
@@ -782,7 +784,26 @@ parse_unary(Token **now)
     else if (token_consume(&tok, "&"))
         node = new_unary(NT_ADDR, parse_unary(&tok));
     else
-        node = parse_primary(&tok);
+        node = parse_index(&tok);
+
+    *now = tok;
+    return node;
+}
+
+// <index> = <primary> ("[" <expr> "]")*
+static Node *
+parse_index(Token **now)
+{
+    Token *tok = *now;
+    Node *node = parse_primary(&tok);
+    Node *expr;
+
+    while (token_consume(&tok, "["))
+    {
+        expr = parse_expr(&tok);
+        token_assert_consume(&tok, "]");
+        node = new_binary(NT_INDEX, node, expr);
+    }
 
     *now = tok;
     return node;
@@ -797,7 +818,6 @@ parse_primary(Token **now)
 {
     Token *tok = *now;
     Node *node;
-    Obj *var;
 
     // expression
     if (token_eq(tok, "("))
@@ -810,15 +830,10 @@ parse_primary(Token **now)
     }
     if (tok->type == TT_IDENT)
     {
-        // function call
         if (is_fn_call(tok))
-        {
             node = parse_fn_call(&tok);
-            *now = tok;
-            return node;
-        }
-        // variable
-        node = parse_var(&tok);
+        else // variable
+            node = parse_var(&tok);
         *now = tok;
         return node;
     }
@@ -964,6 +979,9 @@ semantics(Node **node_)
         case NT_ASSIGN:
             node->dt = node->lch->dt;
             return;
+        case NT_INDEX:
+            sem_idx(node_);
+            return;
         case NT_DEREF:
             if (node->lch->dt->type != DT_PTR)
                 die("attempt to deref a non-pointer");
@@ -1024,7 +1042,7 @@ sem_add(Node **node_)
     if (is_ptr(lch->dt) && is_i64(rch->dt))
     {
         node->rch = new_binary(NT_MUL, rch, node_num(8));
-        node->rch->dt = copy_type(&type_i64); //
+        node->rch->dt = copy_type(&type_i64);
         return;
     }
 
@@ -1044,7 +1062,7 @@ sem_sub(Node **node_)
     if (is_ptr(lch->dt) && is_i64(rch->dt))
     {
         node->rch = new_binary(NT_MUL, rch, node_num(8));
-        node->rch->dt = copy_type(&type_i64); //
+        node->rch->dt = copy_type(&type_i64);
         return;
     }
     // ptr - ptr
@@ -1080,4 +1098,23 @@ sem_div(Node **node_)
         return;
 
     die("bad div between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_idx(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    // given pointer type x, x[y] is alias for *(x+y)
+    if (is_ptr(lch->dt))
+    {
+        node = new_unary(NT_DEREF, new_binary(NT_ADD, lch, rch));
+        sem_add(&node->lch);
+        node->dt = lch->dt->base;
+        *node_ = node;
+        return;
+    }
+
+    die("bad index between %d and %d", lch->dt->type, rch->dt->type);
 }
