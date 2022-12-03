@@ -76,6 +76,7 @@ main()
         test_scopes,
         test_pointer,
         test_function,
+        test_integration,
     };
 
     for (int i = 0; i < COUNT(tests); i++)

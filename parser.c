@@ -29,7 +29,7 @@ static Obj *find_fn(const char *name, size_t len, const Path *path);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
-static bool is_type_int();
+static bool is_type_int(const Type *dt, int bits);
 static bool is_fn_call(Token *tok);
 static void parse_scope(Token **now);
 static void parse_globals(Token **now);
@@ -930,6 +930,8 @@ semantics(Node **node_)
     semantics(&node->br_else);
     for (Node **stmt = &node->block; *stmt; stmt = &(*stmt)->next)
         semantics(stmt);
+    for (Node **arg = &node->fn_args; *arg; arg = &(*arg)->next)
+        semantics(arg);
 
     // annotate data type for statement nodes and below
     Obj *fn, *var;
