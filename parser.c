@@ -3,6 +3,7 @@
 
 #define is_i64(T)       is_type_int((T), 64)
 #define is_ptr(T)       ((T)->type == DT_PTR)
+#define is_arr(T)       ((T)->type == DT_ARR)
 
 static Node *new_node(NodeType type);
 static Node *new_binary(NodeType type, Node *lch, Node *rch);
@@ -29,6 +30,7 @@ static Obj *find_fn(const char *name, size_t len, const Path *path);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
+static Type *type_array(Type *base, int len);
 static bool is_type_int(const Type *dt, int bits);
 static bool is_fn_call(Token *tok);
 static void parse_scope(Token **now);
@@ -36,7 +38,8 @@ static void parse_globals(Token **now);
 static void parse_fn(Token **now);
 static Node *parse_decl(Token **now);
 static Type *parse_declspec(Token **now);
-static Node *parse_declarator(Token **now, Type *dt);
+static Node *parse_declarator(Token **now, Type *dt, ObjType ot);
+static Type *parse_array(Token **now, Type *type);
 static Node *parse_stmt(Token **now);
 static Node *parse_block_stmt(Token **now);
 static Node *parse_expr_stmt(Token **now);
@@ -60,6 +63,7 @@ static void sem_sub(Node **node);
 static void sem_mul(Node **node);
 static void sem_div(Node **node);
 static void sem_idx(Node **node);
+static void sem_var(Node **node);
 
 static Obj *locals;
 static BlockScope *bsc_now;
@@ -366,6 +370,18 @@ type_pointer(Type *base)
 {
     Type *dt = new_type(DT_PTR);
     dt->base = base;
+    dt->size = 8;
+
+    return dt;
+}
+
+static Type *
+type_array(Type *base, int len)
+{
+    Type *dt = new_type(DT_ARR);
+    dt->base = base;
+    dt->size = base->size * len;
+    dt->arr_len = len;
 
     return dt;
 }
@@ -414,24 +430,16 @@ parse_scope(Token **now)
     return;
 }
 
-// <globals> = <declspec> <ident> ("," <ident>)* ";"
+// <globals> = <declspec> <declarator>
 static void
 parse_globals(Token **now)
 {
     Token *tok = *now;
     Type *dt = parse_declspec(&tok);
 
-    if (token_eq(tok, ";"))
-        die("expected global variable identifier");
+    parse_declarator(&tok, dt, OT_GLOBAL);
 
-    while (!token_eq(tok, ";"))
-    {
-        token_consume(&tok, ",");
-        obj_global(dt, get_ident_str(tok));
-        tok = tok->next;
-    }
-
-    *now = tok->next;
+    *now = tok;
     return;
 }
 
@@ -494,7 +502,7 @@ parse_decl(Token **now)
     Type *decl_dt = parse_declspec(&tok);
 
     Node *node = new_node(NT_BLOCK_STMT);
-    node->block = parse_declarator(&tok, decl_dt);
+    node->block = parse_declarator(&tok, decl_dt, OT_LOCAL);
 
     *now = tok;
     return node;
@@ -516,38 +524,73 @@ parse_declspec(Token **now)
     return dt;
 }
 
-// <declarator> = <ident> ("=" <expr>)? ("," <ident> ("=" <expr>)?)* ";"
+// <declarator> = <ident> ("[" <array>)? ("=" <expr>)? ("," <ident> ("[" <array>)? ("=" <expr>)?)* ";"
 static Node *
-parse_declarator(Token **now, Type *dt)
+parse_declarator(Token **now, Type *dt, ObjType ot)
 {
     Token *tok = *now;
     Node dummy = {};
     Node *node = &dummy;
+    Obj *local;
+    const char *name;
 
-    while (!token_eq(tok, ";"))
+    if (tok->type != TT_IDENT)
+        die("expected at least one identifier in declarator");
+
+    while (!token_consume(&tok, ";"))
     {
         token_consume(&tok, ",");
 
         if (tok->type != TT_IDENT)
             die("expected identifier in declarator, got %d", tok->type);
-        if (find_local(tok->pos, tok->len))
-            die("identifier %.*s already declared", tok->len, tok->pos);
 
-        Obj *local = obj_local(dt, get_ident_str(tok));
-
+        name = get_ident_str(tok);
         tok = tok->next;
-        if (!token_consume(&tok, "="))
-            continue;
 
-        // assign value on declaration
-        Node *lch = node_var(local->name);
-        Node *rch = parse_assign(&tok);
-        lch->var = local;
-        node = node->next = new_unary(NT_EXPR_STMT, new_binary(NT_ASSIGN, lch, rch));
+        if (token_consume(&tok, "[")) // array type
+            dt = parse_array(&tok, dt);
+
+        if (ot == OT_LOCAL) // declare local variable
+        {
+            if (find_local(name, strlen(name)))
+                die("local var %s already declared", name);
+
+            local = obj_local(dt, name);
+
+            if (!token_consume(&tok, "="))
+                continue;
+
+            // assign value on declaration
+            Node *lch = node_var(local->name);
+            Node *rch = parse_assign(&tok);
+            lch->var = local;
+            node = node->next = new_unary(NT_EXPR_STMT, new_binary(NT_ASSIGN, lch, rch));
+        }
+        else if (ot == OT_GLOBAL) // declare global variable
+            obj_global(dt, name);
+        else
+            die("can not declare object type %d", ot);
     }
 
-    *now = tok->next;
+    *now = tok;
     return dummy.next;
+}
+
+// <array> = <num> "]" ("[" <array>)?
+static Type *
+parse_array(Token **now, Type *type)
+{
+    Token *tok = *now;
+    int len = get_num_ival(tok);
+
+    tok = tok->next;
+    token_assert_consume(&tok, "]");
+
+    if (token_consume(&tok, "["))
+        type = parse_array(&tok, type);
+
+    *now = tok;
+    return type_array(type, len);
 }
 
 // <stmt> = "{" <block_stmt>
@@ -976,32 +1019,35 @@ semantics(Node **node_)
             node->dt = node->lch->dt;
             return;
         case NT_NEG:
+            node->dt = node->lch->dt;
+            return;
         case NT_ASSIGN:
+            if (is_arr(node->lch->dt))
+                die("can not assign to array");
             node->dt = node->lch->dt;
             return;
         case NT_INDEX:
             sem_idx(node_);
             return;
         case NT_DEREF:
-            if (node->lch->dt->type != DT_PTR)
+            if (!node->lch->dt->base)
                 die("attempt to deref a non-pointer");
             node->dt = node->lch->dt->base;
+            if (is_arr(node->dt))
+            {
+                node = new_unary(NT_ADDR, node);
+                semantics(&node);
+                *node_ = node;
+            }
             return;
         case NT_ADDR:
-            node->dt = type_pointer(node->lch->dt);
+            if (is_arr(node->lch->dt))
+                node->dt = type_pointer(node->lch->dt->base);
+            else
+                node->dt = type_pointer(node->lch->dt);
             return;
         case NT_VAR:
-            if (node->var) // local variable
-            {
-                node->dt = node->var->dt;
-                return;
-            }
-            var = find_global(node->var_name, strlen(node->var_name), node->path);
-            if (!var)
-                die("identifier %s not declared", node->var_name);
-            node->scope = scope_lookup(node->path);
-            node->var = var;
-            node->dt = var->dt;
+            sem_var(node_);
             return;
         case NT_EQ:
         case NT_NE:
@@ -1041,7 +1087,7 @@ sem_add(Node **node_)
     // ptr + i64
     if (is_ptr(lch->dt) && is_i64(rch->dt))
     {
-        node->rch = new_binary(NT_MUL, rch, node_num(8));
+        node->rch = new_binary(NT_MUL, rch, node_num(lch->dt->base->size));
         node->rch->dt = copy_type(&type_i64);
         return;
     }
@@ -1061,14 +1107,14 @@ sem_sub(Node **node_)
     // ptr - i64
     if (is_ptr(lch->dt) && is_i64(rch->dt))
     {
-        node->rch = new_binary(NT_MUL, rch, node_num(8));
+        node->rch = new_binary(NT_MUL, rch, node_num(lch->dt->base->size));
         node->rch->dt = copy_type(&type_i64);
         return;
     }
     // ptr - ptr
     if (is_ptr(lch->dt) && is_ptr(rch->dt))
     {
-        *node_ = new_binary(NT_DIV, node, node_num(8));
+        *node_ = new_binary(NT_DIV, node, node_num(lch->dt->base->size));
         (*node_)->dt = copy_type(&type_i64);
         return;
     }
@@ -1110,11 +1156,38 @@ sem_idx(Node **node_)
     if (is_ptr(lch->dt))
     {
         node = new_unary(NT_DEREF, new_binary(NT_ADD, lch, rch));
-        sem_add(&node->lch);
-        node->dt = lch->dt->base;
+        semantics(&node);
         *node_ = node;
         return;
     }
 
     die("bad index between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_var(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+    Obj *var;
+
+    if (node->var) // local variable
+        node->dt = node->var->dt;
+    else // global variable
+    {
+        var = find_global(node->var_name, strlen(node->var_name), node->path);
+        if (!var)
+            die("identifier %s not declared", node->var_name);
+        node->scope = scope_lookup(node->path);
+        node->var = var;
+        node->dt = var->dt;
+    }
+
+    // array variable is converted into a pointer to it's first element
+    if (is_arr(node->dt))
+    {
+        node = new_unary(NT_ADDR, node);
+        semantics(&node);
+        *node_ = node;
+    }
 }

@@ -9,6 +9,8 @@ static void gen_expr(Node *node);
 static void gen_addr(Node *node);
 static void push();
 static void pop(const char *reg);
+static void load(const char *reg, Type *dt);
+static void store(const char *reg);
 static char *get_fullname(const char *name, const Scope *sc);
 static void assign_locals(Obj *fn);
 static int align_to(int n, int align);
@@ -172,14 +174,14 @@ gen_expr(Node *node)
             return;
         case NT_VAR:
             gen_addr(node);
-            println("  mov  rax, [rax]");
+            load("rax", node->dt);
             return;
         case NT_ASSIGN:
             gen_addr(node->lch);
             push();
             gen_expr(node->rch);
             pop("rdi");
-            println("  mov  [rdi], rax");
+            store("rdi");
             return;
         case NT_FN_CALL:
             for (Node *arg = node->fn_args; arg; arg = arg->next)
@@ -196,7 +198,7 @@ gen_expr(Node *node)
             return;
         case NT_DEREF:
             gen_expr(node->lch);
-            println("  mov  rax, [rax]");
+            load("rax", node->dt);
             return;
         case NT_ADDR:
             gen_addr(node->lch);
@@ -282,6 +284,26 @@ pop(const char *reg)
     --depth;
 }
 
+// load value to rax from pointer location
+static void
+load(const char *reg, Type *dt)
+{
+    if (dt->type == DT_ARR)
+    {
+        if (strcmp(reg, "rax"))
+            println("  mov rax, %s", reg);
+        return; // pointer value is now loaded at rax
+    }
+    println("  mov  rax, [%s]", reg);
+}
+
+// write value from rax to pointer location
+static void
+store(const char *reg)
+{
+    println("  mov  [%s], rax", reg);
+}
+
 static char *
 get_fullname(const char *name, const Scope *sc)
 {
@@ -300,12 +322,12 @@ get_fullname(const char *name, const Scope *sc)
 static void
 assign_locals(Obj *fn)
 {
-    int offset = 8;
+    int offset = 0;
 
     for (Obj *local = fn->locals; local; local = local->next)
     {
+        offset += local->dt->size;
         local->rbp_off = offset;
-        offset += 8;
     }
 
     fn->stack_size = align_to(offset, 16);

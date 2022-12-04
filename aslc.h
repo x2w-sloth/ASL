@@ -132,6 +132,7 @@ typedef enum {
     DT_NONE,
     DT_INT,
     DT_PTR,
+    DT_ARR,
     DT_FN,
 } DataType;
 
@@ -142,8 +143,9 @@ struct Type {
     int size;
     // integer type, float type
     int bits;
-    // pointer type
+    // pointer type, array type
     Type *base;
+    int arr_len;
     // function type
     Type *params;
     Type *ret;
