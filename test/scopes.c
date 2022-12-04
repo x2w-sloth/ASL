@@ -21,6 +21,7 @@ test_scopes()
     TEST(7, "fn main() i64 { i64 x=4; g:x=3; return x + g:x; } scope g {i64 x;}");
     TEST(3, "fn main() i64 { return g:x=3; } scope g {i64 x;}");
     TEST(5, "fn main() i64 { a:x=2; b:x=3; return a:x + b:x; } scope a {i64 x;} scope b {i64 x;}");
+    TEST(5, "fn main() i64 { a:x[0]=2; a:x[1]=3; return *a:x + a:x[1]; } scope a {i64 x[2];}");
     TEST(9, "fn main() i64 { a:a:x=4; a:b:x=5; return a:a:x + a:b:x; } scope a { scope a {i64 x;} scope b {i64 x;}}");
 
     // named scope functions
