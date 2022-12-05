@@ -57,12 +57,13 @@ static Node *parse_fn_call(Token **now);
 static Node *parse_var(Token **now);
 static char *get_ident_str(Token *tok);
 static int64_t get_num_ival(Token *tok);
-static void semantics(Node **node);
+static void sem(Node **node);
 static void sem_add(Node **node);
 static void sem_sub(Node **node);
 static void sem_mul(Node **node);
 static void sem_div(Node **node);
-static void sem_idx(Node **node);
+static void sem_index(Node **node);
+static void sem_deref(Node **node);
 static void sem_var(Node **node);
 
 static Obj *locals;
@@ -76,7 +77,8 @@ parse(Token *tok)
 {
     scope_enter(&sc_root);
 
-    // construct AST and allocate objects
+    // First pass traverses tokens
+    // construct AST and allocate objects along the way
     while (tok->type != TT_END)
     {
         if (token_eq(tok, "scope"))
@@ -87,7 +89,8 @@ parse(Token *tok)
             parse_globals(&tok);
     }
 
-    // check type semantics and mutate AST as necessary
+    // Second pass traverses AST
+    // check type semantics for each node and mutate AST as necessary
     scope_semantics(&sc_root);
 
     if (sc_now != &sc_root)
@@ -262,7 +265,7 @@ scope_semantics(Scope *sc)
         return;
 
     for (Obj *fn = sc->fns; fn; fn = fn->next)
-        semantics(&fn->body);
+        sem(&fn->body);
 
     sc = sc->children;
     for (Scope *s = sc; s; s = s->next)
@@ -971,25 +974,27 @@ get_num_ival(Token *tok)
     return tok->ival;
 }
 
+// recursively determine the data type of given Node and check semantics.
+// we pass in a Node ** because we may mutate the AST in the process.
 static void
-semantics(Node **node_)
+sem(Node **node_)
 {
     Node *node = *node_;
 
     if (!node || node->dt)
         return;
 
-    semantics(&node->lch);
-    semantics(&node->rch);
-    semantics(&node->init);
-    semantics(&node->cond);
-    semantics(&node->iter);
-    semantics(&node->br_if);
-    semantics(&node->br_else);
+    sem(&node->lch);
+    sem(&node->rch);
+    sem(&node->init);
+    sem(&node->cond);
+    sem(&node->iter);
+    sem(&node->br_if);
+    sem(&node->br_else);
     for (Node **stmt = &node->block; *stmt; stmt = &(*stmt)->next)
-        semantics(stmt);
+        sem(stmt);
     for (Node **arg = &node->fn_args; *arg; arg = &(*arg)->next)
-        semantics(arg);
+        sem(arg);
 
     // annotate data type for statement nodes and below
     Obj *fn, *var;
@@ -1004,19 +1009,15 @@ semantics(Node **node_)
             return;
         case NT_ADD:
             sem_add(node_);
-            node->dt = node->lch->dt;
             return;
         case NT_SUB:
             sem_sub(node_);
-            node->dt = node->lch->dt;
             return;
         case NT_MUL:
             sem_mul(node_);
-            node->dt = node->lch->dt;
             return;
         case NT_DIV:
             sem_div(node_);
-            node->dt = node->lch->dt;
             return;
         case NT_NEG:
             node->dt = node->lch->dt;
@@ -1027,18 +1028,10 @@ semantics(Node **node_)
             node->dt = node->lch->dt;
             return;
         case NT_INDEX:
-            sem_idx(node_);
+            sem_index(node_);
             return;
         case NT_DEREF:
-            if (!node->lch->dt->base)
-                die("attempt to deref a non-pointer");
-            node->dt = node->lch->dt->base;
-            if (is_arr(node->dt))
-            {
-                node = new_unary(NT_ADDR, node);
-                semantics(&node);
-                *node_ = node;
-            }
+            sem_deref(node_);
             return;
         case NT_ADDR:
             if (is_arr(node->lch->dt))
@@ -1076,7 +1069,10 @@ sem_add(Node **node_)
 
     // i64 + i64
     if (is_i64(lch->dt) && is_i64(rch->dt))
+    {
+        node->dt = node->lch->dt;
         return;
+    }
     // canonicalize i64 + ptr
     if (is_i64(lch->dt) && is_ptr(rch->dt))
     {
@@ -1089,6 +1085,7 @@ sem_add(Node **node_)
     {
         node->rch = new_binary(NT_MUL, rch, node_num(lch->dt->base->size));
         node->rch->dt = copy_type(&type_i64);
+        node->dt = node->lch->dt;
         return;
     }
 
@@ -1103,12 +1100,16 @@ sem_sub(Node **node_)
 
     // i64 - i64
     if (is_i64(lch->dt) && is_i64(rch->dt))
+    {
+        node->dt = node->lch->dt;
         return;
+    }
     // ptr - i64
     if (is_ptr(lch->dt) && is_i64(rch->dt))
     {
         node->rch = new_binary(NT_MUL, rch, node_num(lch->dt->base->size));
         node->rch->dt = copy_type(&type_i64);
+        node->dt = node->lch->dt;
         return;
     }
     // ptr - ptr
@@ -1129,7 +1130,10 @@ sem_mul(Node **node_)
     Node *lch = node->lch, *rch = node->rch;
 
     if (is_i64(lch->dt) && is_i64(rch->dt))
+    {
+        node->dt = node->lch->dt;
         return;
+    }
 
     die("bad mul between %d and %d", lch->dt->type, rch->dt->type);
 }
@@ -1141,13 +1145,16 @@ sem_div(Node **node_)
     Node *lch = node->lch, *rch = node->rch;
 
     if (is_i64(lch->dt) && is_i64(rch->dt))
+    {
+        node->dt = node->lch->dt;
         return;
+    }
 
     die("bad div between %d and %d", lch->dt->type, rch->dt->type);
 }
 
 static void
-sem_idx(Node **node_)
+sem_index(Node **node_)
 {
     Node *node = *node_;
     Node *lch = node->lch, *rch = node->rch;
@@ -1156,12 +1163,31 @@ sem_idx(Node **node_)
     if (is_ptr(lch->dt))
     {
         node = new_unary(NT_DEREF, new_binary(NT_ADD, lch, rch));
-        semantics(&node);
+        sem(&node);
         *node_ = node;
         return;
     }
 
     die("bad index between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_deref(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    if (!node->lch->dt->base)
+        die("attempt to deref a non-pointer");
+
+    node->dt = node->lch->dt->base;
+
+    if (is_arr(node->dt))
+    {
+        node = new_unary(NT_ADDR, node);
+        sem(&node);
+        *node_ = node;
+    }
 }
 
 static void
@@ -1187,7 +1213,7 @@ sem_var(Node **node_)
     if (is_arr(node->dt))
     {
         node = new_unary(NT_ADDR, node);
-        semantics(&node);
+        sem(&node);
         *node_ = node;
     }
 }
