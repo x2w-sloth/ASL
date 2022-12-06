@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include "../util.h"
 #include "test.h"
 
 typedef bool (*test_fn)(void);
@@ -8,7 +9,7 @@ typedef bool (*test_fn)(void);
 static bool validate(int val);
 
 bool
-str_test(int val, const char *src)
+str_test(int val, char *src)
 {
     static char cmd[512];
 
@@ -18,13 +19,13 @@ str_test(int val, const char *src)
     snprintf(cmd, sizeof(cmd), "echo \"%s\" | ./aslc - > tmp.s", src);
 
     if (system(cmd) != 0)
-      perror("failed to compile program");
+      die("failed to compile program");
 
     return validate(val);
 }
 
 bool
-file_test(int val, const char *path)
+file_test(int val, char *path)
 {
     static char cmd[512];
 
@@ -34,7 +35,7 @@ file_test(int val, const char *path)
     snprintf(cmd, sizeof(cmd), "./aslc %s > tmp.s", path);
 
     if (system(cmd) != 0)
-      perror("failed to compile program");
+      die("failed to compile program");
 
     return validate(val);
 }
@@ -43,16 +44,17 @@ static bool
 validate(int val)
 {
     int status;
+    char *assemble[] = { "as", "tmp.s", "-o", "tmp.o", "-msyntax=intel", "-mnaked-reg", NULL };
+    char *link[] = { "ld", "tmp.o", "-o", "tmp", NULL };
+    char *bin[] = { "./tmp", NULL };
 
-    // assmeble and link asm source at ./tmp.s
-    if (system("as tmp.s -o tmp.o -msyntax=intel -mnaked-reg") != 0)
-      perror("failed to assemble program");
+    if (runcmd(assemble) != 0)
+      die("failed to assemble program");
 
-    if (system("ld tmp.o -o tmp") != 0)
-      perror("failed to link program");
+    if (runcmd(link) != 0)
+      die("failed to link program");
 
-    // run compiled binary
-    status = system("./tmp") >> 8;
+    status = runcmd(bin) >> 8;
     printf(" => %d", status);
 
     if (val != status)

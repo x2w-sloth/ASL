@@ -21,7 +21,7 @@ bool test_function();
 bool test_integration();
 
 // test.c
-bool str_test(int val, const char *src);
-bool file_test(int val, const char *path);
+bool str_test(int val, char *src);
+bool file_test(int val, char *path);
 
 #endif // TEST_H

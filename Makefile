@@ -1,11 +1,11 @@
 
 all: aslc
 
-aslc: main.c lexer.c parser.c codegen.c
+aslc: main.c lexer.c parser.c codegen.c util.c
 	$(CC) $^ -o $@
 
-test: aslc FORCE
-	$(CC) test/*.c -o test_driver
+test: aslc util.c FORCE
+	$(CC) test/*.c util.c -o test_driver
 	./test_driver
 	rm -f test_driver tmp*
 

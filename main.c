@@ -6,38 +6,6 @@
 
 _Static_assert (sizeof(int) == 4, "platform int is not 32-bit");
 
-void
-fprint(FILE *file, const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    vfprintf(file, fmt, ap);
-    va_end(ap);
-}
-
-void *
-xmalloc(size_t size)
-{
-    void *mem = malloc(size);
-
-    if (!mem)
-        die("malloc failed to allocate %u bytes\n", size);
-
-    return mem;
-}
-
-void *
-xrealloc(void *ptr, size_t size)
-{
-    ptr = realloc(ptr, size);
-
-    if (!ptr)
-        die("realloc failed to resize to %u\n", size);
-
-    return ptr;
-}
-
 static char *
 file_buf(const char *path)
 {

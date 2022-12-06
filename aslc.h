@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include "util.h"
 
 #define COUNT(A)     (sizeof(A) / sizeof(*(A)))
 
@@ -156,29 +157,5 @@ Scope *parse(Token *tok);
 // codegen.c
 
 void gen(Scope *prog);
-
-// main.c
-
-#define print(...)                    \
-    fprint(stdout, __VA_ARGS__)
-#define println(...)                  \
-    do {                              \
-        fprint(stdout, __VA_ARGS__);  \
-        fputc('\n', stdout);          \
-    } while (0)
-#define eprintln(...)                 \
-    do {                              \
-        fprint(stderr, __VA_ARGS__);  \
-        fputc('\n', stderr);          \
-    } while (0)
-#define die(...)                      \
-    do {                              \
-        eprintln(__VA_ARGS__);        \
-        exit(EXIT_FAILURE);           \
-    } while (0)
-
-void fprint(FILE *file, const char *fmt, ...);
-void *xmalloc(size_t size);
-void *xrealloc(void *ptr, size_t size);
 
 #endif // ASLC_H
