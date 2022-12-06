@@ -16,7 +16,6 @@ tokenize(const char *c)
 {
     Token dummy;
     Token *tok = &dummy, *next;
-    size_t len;
 
     while (*c != '\0')
     {
@@ -61,7 +60,7 @@ void
 token_assert(const Token *tok, const char *str)
 {
     if (!token_eq(tok, str))
-        die("token expected: %s, got %.*s", str, tok->len, tok->pos);
+        die("token expected: %s, got %.*s", str, (int)tok->len, tok->pos);
 }
 
 bool

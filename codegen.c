@@ -1,6 +1,8 @@
 #include <string.h>
 #include "aslc.h"
+#include "util.h"
 
+static void println(const char *fmt, ...);
 static void gen_data(Scope *sc);
 static void gen_text(Scope *sc);
 static void gen_fn(Obj *fn);
@@ -16,6 +18,7 @@ static void assign_locals(Obj *fn);
 static int align_to(int n, int align);
 static int new_id();
 
+static FILE *genfile;
 static int depth;
 static Obj *fn_now;
 static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
@@ -23,6 +26,8 @@ static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 void
 gen(Scope *sc_root)
 {
+    genfile = stdout;
+
     // .data section
     println("  .data");
     gen_data(sc_root);
@@ -38,6 +43,18 @@ gen(Scope *sc_root)
     println("  mov  rdi, rax");
     println("  mov  rax, 0x3C");
     println("  syscall");
+}
+
+static void
+println(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    vfprintf(genfile, fmt, ap);
+    va_end(ap);
+
+    fputc('\n', genfile);
 }
 
 static void

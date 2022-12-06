@@ -997,7 +997,7 @@ sem(Node **node_)
         sem(arg);
 
     // annotate data type for statement nodes and below
-    Obj *fn, *var;
+    Obj *fn;
     switch (node->type)
     {
         case NT_RET_STMT:
@@ -1175,7 +1175,6 @@ static void
 sem_deref(Node **node_)
 {
     Node *node = *node_;
-    Node *lch = node->lch, *rch = node->rch;
 
     if (!node->lch->dt->base)
         die("attempt to deref a non-pointer");
@@ -1194,7 +1193,6 @@ static void
 sem_var(Node **node_)
 {
     Node *node = *node_;
-    Node *lch = node->lch, *rch = node->rch;
     Obj *var;
 
     if (node->var) // local variable

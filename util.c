@@ -1,4 +1,6 @@
 #include "util.h"
+#include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 
 void
@@ -17,7 +19,7 @@ xmalloc(size_t size)
     void *mem = malloc(size);
 
     if (!mem)
-        die("malloc failed to allocate %u bytes\n", size);
+        die("malloc failed to allocate %zu bytes\n", size);
 
     return mem;
 }
@@ -28,7 +30,7 @@ xrealloc(void *ptr, size_t size)
     ptr = realloc(ptr, size);
 
     if (!ptr)
-        die("realloc failed to resize to %u\n", size);
+        die("realloc failed to resize to %zu\n", size);
 
     return ptr;
 }
