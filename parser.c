@@ -1,7 +1,9 @@
 #include <string.h>
 #include "aslc.h"
 
-#define is_i64(T)       is_type_int((T), 64)
+#define is_i8(T)        (is_int(T) && (T)->size == 1)
+#define is_i64(T)       (is_int(T) && (T)->size == 8)
+#define is_int(T)       ((T)->type == DT_INT)
 #define is_ptr(T)       ((T)->type == DT_PTR)
 #define is_arr(T)       ((T)->type == DT_ARR)
 
@@ -31,7 +33,7 @@ static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
 static Type *type_array(Type *base, int len);
-static bool is_type_int(const Type *dt, int bits);
+static bool is_type_name(Token *tok);
 static bool is_fn_call(Token *tok);
 static void parse_scope(Token **now);
 static void parse_globals(Token **now);
@@ -70,7 +72,8 @@ static Obj *locals;
 static BlockScope *bsc_now;
 static Scope *sc_now, sc_root;
 static const Type type_none = { .type = DT_NONE };
-static const Type type_i64  = { .type = DT_INT, .size = 8, .bits = 64 };
+static const Type type_i8   = { .type = DT_INT, .size = 1 };
+static const Type type_i64  = { .type = DT_INT, .size = 8 };
 
 Scope *
 parse(Token *tok)
@@ -390,9 +393,9 @@ type_array(Type *base, int len)
 }
 
 static bool
-is_type_int(const Type *dt, int bits)
+is_type_name(Token *tok)
 {
-    return dt->type == DT_INT && dt->bits == bits;
+    return token_eq(tok, "i8") || token_eq(tok, "i64");
 }
 
 static bool
@@ -501,7 +504,6 @@ static Node *
 parse_decl(Token **now)
 {
     Token *tok = *now;
-
     Type *decl_dt = parse_declspec(&tok);
 
     Node *node = new_node(NT_BLOCK_STMT);
@@ -511,14 +513,19 @@ parse_decl(Token **now)
     return node;
 }
 
-// <declspec> = "i64" ("*")*
+// <declspec> = ("i8" | "i64") ("*")*
 static Type *
 parse_declspec(Token **now)
 {
     Token *tok = *now;
+    Type *dt;
 
-    token_assert_consume(&tok, "i64");
-    Type *dt = copy_type(&type_i64);
+    if (token_consume(&tok, "i8"))
+        dt = copy_type(&type_i8);
+    else if (token_consume(&tok, "i64"))
+        dt = copy_type(&type_i64);
+    else
+        die("unknown type");
 
     while (token_consume(&tok, "*"))
         dt = type_pointer(dt);
@@ -628,7 +635,7 @@ parse_block_stmt(Token **now)
 
     while (!token_eq(tok, "}"))
     {
-        if (token_eq(tok, "i64"))
+        if (is_type_name(tok))
             node = node->next = parse_decl(&tok);
         else
             node = node->next = parse_stmt(&tok);
@@ -1067,21 +1074,21 @@ sem_add(Node **node_)
     Node *node = *node_;
     Node *lch = node->lch, *rch = node->rch;
 
-    // i64 + i64
-    if (is_i64(lch->dt) && is_i64(rch->dt))
+    // int + int
+    if (is_int(lch->dt) && is_int(rch->dt))
     {
         node->dt = node->lch->dt;
         return;
     }
-    // canonicalize i64 + ptr
-    if (is_i64(lch->dt) && is_ptr(rch->dt))
+    // canonicalize int + ptr
+    if (is_int(lch->dt) && is_ptr(rch->dt))
     {
         Node *tmp = node->lch;
         node->lch = node->rch;
         node->rch = tmp;
     }
-    // ptr + i64
-    if (is_ptr(lch->dt) && is_i64(rch->dt))
+    // ptr + int
+    if (is_ptr(lch->dt) && is_int(rch->dt))
     {
         node->rch = new_binary(NT_MUL, rch, node_num(lch->dt->base->size));
         node->rch->dt = copy_type(&type_i64);
@@ -1098,14 +1105,14 @@ sem_sub(Node **node_)
     Node *node = *node_;
     Node *lch = node->lch, *rch = node->rch;
 
-    // i64 - i64
-    if (is_i64(lch->dt) && is_i64(rch->dt))
+    // int - int
+    if (is_int(lch->dt) && is_int(rch->dt))
     {
         node->dt = node->lch->dt;
         return;
     }
-    // ptr - i64
-    if (is_ptr(lch->dt) && is_i64(rch->dt))
+    // ptr - int
+    if (is_ptr(lch->dt) && is_int(rch->dt))
     {
         node->rch = new_binary(NT_MUL, rch, node_num(lch->dt->base->size));
         node->rch->dt = copy_type(&type_i64);
@@ -1129,7 +1136,7 @@ sem_mul(Node **node_)
     Node *node = *node_;
     Node *lch = node->lch, *rch = node->rch;
 
-    if (is_i64(lch->dt) && is_i64(rch->dt))
+    if (is_int(lch->dt) && is_int(rch->dt))
     {
         node->dt = node->lch->dt;
         return;
@@ -1144,7 +1151,7 @@ sem_div(Node **node_)
     Node *node = *node_;
     Node *lch = node->lch, *rch = node->rch;
 
-    if (is_i64(lch->dt) && is_i64(rch->dt))
+    if (is_int(lch->dt) && is_int(rch->dt))
     {
         node->dt = node->lch->dt;
         return;

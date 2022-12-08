@@ -12,7 +12,7 @@ static void gen_addr(Node *node);
 static void push();
 static void pop(const char *reg);
 static void load(const char *reg, Type *dt);
-static void store(const char *reg);
+static void store(const char *reg, Type *dt);
 static char *get_fullname(const char *name, const Scope *sc);
 static void assign_locals(Obj *fn);
 static int align_to(int n, int align);
@@ -21,6 +21,7 @@ static int new_id();
 static FILE *genfile;
 static int depth;
 static Obj *fn_now;
+static const char *arg8[]  = { "dil", "sil", "dl", "cl", "r8b", "r9b" };
 static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
 void
@@ -104,7 +105,14 @@ gen_fn(Obj *fn)
     // move parameters to stack
     int i = 0;
     for (Obj *param = fn->params; param; param = param->next)
-        println("  mov  [rbp - %d], %s", param->rbp_off, arg64[i++]);
+    {
+        if (param->dt->size == 1)
+            println("  mov  [rbp - %d], %s", param->rbp_off, arg8[i++]);
+        else if (param->dt->size == 8)
+            println("  mov  [rbp - %d], %s", param->rbp_off, arg64[i++]);
+        else
+            die("fail to load parameter of size %d", param->dt->size);
+    }
 
     for (Node *stmt = fn->body; stmt; stmt = stmt->next)
     {
@@ -198,7 +206,7 @@ gen_expr(Node *node)
             push();
             gen_expr(node->rch);
             pop("rdi");
-            store("rdi");
+            store("rdi", node->dt);
             return;
         case NT_FN_CALL:
             for (Node *arg = node->fn_args; arg; arg = arg->next)
@@ -311,14 +319,25 @@ load(const char *reg, Type *dt)
             println("  mov rax, %s", reg);
         return; // pointer value is now loaded at rax
     }
-    println("  mov  rax, [%s]", reg);
+
+    if (dt->size == 1)
+        println("  movsbq  rax, [%s]", reg);
+    else if (dt->size == 8)
+        println("  mov  rax, [%s]", reg);
+    else
+        die("fail to load type of size %d", dt->size);
 }
 
 // write value from rax to pointer location
 static void
-store(const char *reg)
+store(const char *reg, Type *dt)
 {
-    println("  mov  [%s], rax", reg);
+    if (dt->size == 1)
+        println("  mov  [%s], al", reg);
+    else if (dt->size == 8)
+        println("  mov  [%s], rax", reg);
+    else
+        die("fail to store type of size %d", dt->size);
 }
 
 static char *
