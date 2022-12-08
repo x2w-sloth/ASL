@@ -16,7 +16,7 @@ str_test(int val, char *src)
     printf("  %s", src);
 
     // compile ASL source string
-    snprintf(cmd, sizeof(cmd), "echo \"%s\" | ./aslc - > tmp.s", src);
+    snprintf(cmd, sizeof(cmd), "echo \"%s\" | ./aslc - -o tmp", src);
 
     if (system(cmd) != 0)
       die("failed to compile program");
@@ -32,7 +32,7 @@ file_test(int val, char *path)
     printf("  %s", path);
 
     // compile ASL source file
-    snprintf(cmd, sizeof(cmd), "./aslc %s > tmp.s", path);
+    snprintf(cmd, sizeof(cmd), "./aslc %s -o tmp", path);
 
     if (system(cmd) != 0)
       die("failed to compile program");
@@ -44,15 +44,7 @@ static bool
 validate(int val)
 {
     int status;
-    char *assemble[] = { "as", "tmp.s", "-o", "tmp.o", "-msyntax=intel", "-mnaked-reg", NULL };
-    char *link[] = { "ld", "tmp.o", "-o", "tmp", NULL };
     char *bin[] = { "./tmp", NULL };
-
-    if (runcmd(assemble) != 0)
-      die("failed to assemble program");
-
-    if (runcmd(link) != 0)
-      die("failed to link program");
 
     status = runcmd(bin) >> 8;
     printf(" => %d", status);

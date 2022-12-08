@@ -27,7 +27,7 @@ static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 void
 gen(Scope *sc_root)
 {
-    genfile = stdout;
+    genfile = (cfg.genfile) ? fopen(cfg.genfile, "w") : stdout;
 
     // .data section
     println("  .data");
@@ -44,6 +44,9 @@ gen(Scope *sc_root)
     println("  mov  rdi, rax");
     println("  mov  rax, 0x3C");
     println("  syscall");
+
+    if (genfile != stdout)
+        fclose(genfile);
 }
 
 static void

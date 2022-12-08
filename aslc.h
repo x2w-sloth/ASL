@@ -17,6 +17,7 @@ typedef struct Path Path;
 typedef struct Node Node;
 typedef struct Obj Obj;
 typedef struct Type Type;
+typedef struct Config Config;
 
 // lexer.c
 
@@ -157,5 +158,18 @@ Scope *parse(Token *tok);
 // codegen.c
 
 void gen(Scope *prog);
+
+// main.c
+
+struct Config {
+    bool read_stdin;    // read source code from stdin
+    char *outfile;      // output file name specified by "-o" option
+    char *srcfile;      // input single source file name
+    char *genfile;      // output codegen asm file name
+    char *objfile;      // output object file name
+    char *binfile;      // output executable file name
+};
+
+extern Config cfg;
 
 #endif // ASLC_H
