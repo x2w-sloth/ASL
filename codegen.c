@@ -22,6 +22,7 @@ static FILE *genfile;
 static int depth;
 static Obj *fn_now;
 static const char *arg8[]  = { "dil", "sil", "dl",  "cl",  "r8b", "r9b" };
+static const char *arg16[] = { "di",  "si",  "dx",  "cx",  "r8w", "r9w" };
 static const char *arg32[] = { "edi", "esi", "edx", "ecx", "r8d", "r9d" };
 static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8",  "r9" };
 
@@ -114,6 +115,7 @@ gen_fn(Obj *fn)
         switch (param->dt->size)
         {
             case 1: arg = arg8;  break;
+            case 2: arg = arg16; break;
             case 4: arg = arg32; break;
             case 8: arg = arg64; break;
             default:
@@ -330,6 +332,8 @@ load(const char *reg, Type *dt)
 
     if (dt->size == 1)
         println("  movsbq  rax, [%s]", reg);
+    else if (dt->size == 2)
+        println("  movsx   rax, WORD PTR [%s]", reg);
     else if (dt->size == 4)
         println("  movsxd  rax, [%s]", reg);
     else if (dt->size == 8)
@@ -344,6 +348,8 @@ store(const char *reg, Type *dt)
 {
     if (dt->size == 1)
         println("  mov  [%s], al", reg);
+    else if (dt->size == 2)
+        println("  mov  [%s], ax", reg);
     else if (dt->size == 4)
         println("  mov  [%s], eax", reg);
     else if (dt->size == 8)
