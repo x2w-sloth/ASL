@@ -2,6 +2,7 @@
 #include "aslc.h"
 
 #define is_i8(T)        (is_int(T) && (T)->size == 1)
+#define is_i32(T)       (is_int(T) && (T)->size == 4)
 #define is_i64(T)       (is_int(T) && (T)->size == 8)
 #define is_int(T)       ((T)->type == DT_INT)
 #define is_ptr(T)       ((T)->type == DT_PTR)
@@ -73,6 +74,7 @@ static BlockScope *bsc_now;
 static Scope *sc_now, sc_root;
 static const Type type_none = { .type = DT_NONE };
 static const Type type_i8   = { .type = DT_INT, .size = 1 };
+static const Type type_i32  = { .type = DT_INT, .size = 4 };
 static const Type type_i64  = { .type = DT_INT, .size = 8 };
 
 Scope *
@@ -395,7 +397,7 @@ type_array(Type *base, int len)
 static bool
 is_type_name(Token *tok)
 {
-    return token_eq(tok, "i8") || token_eq(tok, "i64");
+    return token_eq(tok, "i8") || token_eq(tok, "i32") || token_eq(tok, "i64");
 }
 
 static bool
@@ -513,7 +515,7 @@ parse_decl(Token **now)
     return node;
 }
 
-// <declspec> = ("i8" | "i64") ("*")*
+// <declspec> = ("i8" | "i32" | "i64") ("*")*
 static Type *
 parse_declspec(Token **now)
 {
@@ -522,6 +524,8 @@ parse_declspec(Token **now)
 
     if (token_consume(&tok, "i8"))
         dt = copy_type(&type_i8);
+    else if (token_consume(&tok, "i32"))
+        dt = copy_type(&type_i32);
     else if (token_consume(&tok, "i64"))
         dt = copy_type(&type_i64);
     else

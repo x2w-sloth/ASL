@@ -23,6 +23,9 @@ test_locals()
     TEST(7, "fn main() i64 { i8 a=1; i64 b=2; i8 c=4; return a+b+c;}");
     TEST(7, "fn main() i64 { i8 a=1, b=2; i64 c=4; return a+b+c;}");
     TEST(7, "fn main() i64 { i64 a=1, b=2; i8 c=4; return a+b+c;}");
+    TEST(7, "fn main() i64 { i64 a=1; i32 b=2; i8 c=4; return a+b+c;}");
+    TEST(7, "fn main() i64 { i64 a=1; i32 b=2, c=4; return a+b+c;}");
+    TEST(7, "fn main() i64 { i32 a=1, b=2; i8 c=4; return a+b+c;}");
 
     puts("ok");
     return true;

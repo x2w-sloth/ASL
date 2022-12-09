@@ -21,8 +21,9 @@ static int new_id();
 static FILE *genfile;
 static int depth;
 static Obj *fn_now;
-static const char *arg8[]  = { "dil", "sil", "dl", "cl", "r8b", "r9b" };
-static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
+static const char *arg8[]  = { "dil", "sil", "dl",  "cl",  "r8b", "r9b" };
+static const char *arg32[] = { "edi", "esi", "edx", "ecx", "r8d", "r9d" };
+static const char *arg64[] = { "rdi", "rsi", "rdx", "rcx", "r8",  "r9" };
 
 void
 gen(Scope *sc_root)
@@ -107,14 +108,18 @@ gen_fn(Obj *fn)
 
     // move parameters to stack
     int i = 0;
+    const char **arg;
     for (Obj *param = fn->params; param; param = param->next)
     {
-        if (param->dt->size == 1)
-            println("  mov  [rbp - %d], %s", param->rbp_off, arg8[i++]);
-        else if (param->dt->size == 8)
-            println("  mov  [rbp - %d], %s", param->rbp_off, arg64[i++]);
-        else
-            die("fail to load parameter of size %d", param->dt->size);
+        switch (param->dt->size)
+        {
+            case 1: arg = arg8;  break;
+            case 4: arg = arg32; break;
+            case 8: arg = arg64; break;
+            default:
+                die("fail to load parameter of size %d", param->dt->size);
+        }
+        println("  mov  [rbp - %d], %s", param->rbp_off, arg[i++]);
     }
 
     for (Node *stmt = fn->body; stmt; stmt = stmt->next)
@@ -325,6 +330,8 @@ load(const char *reg, Type *dt)
 
     if (dt->size == 1)
         println("  movsbq  rax, [%s]", reg);
+    else if (dt->size == 4)
+        println("  movsxd  rax, [%s]", reg);
     else if (dt->size == 8)
         println("  mov  rax, [%s]", reg);
     else
@@ -337,6 +344,8 @@ store(const char *reg, Type *dt)
 {
     if (dt->size == 1)
         println("  mov  [%s], al", reg);
+    else if (dt->size == 4)
+        println("  mov  [%s], eax", reg);
     else if (dt->size == 8)
         println("  mov  [%s], rax", reg);
     else

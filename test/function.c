@@ -12,6 +12,7 @@ test_function()
     TEST(5,  "fn main() i64 {return add3(2);} fn add3(i64 a) i64 {i64 b=3; return a+b;}");
     TEST(21, "fn main() i64 {return sum(1,2,3,4,5,6);} fn sum(i64 a,i64 b,i64 c,i64 d,i64 e,i64 f) i64 {return a+b+c+d+e+f;}");
     TEST(4,  "fn main() i64 {i64 x=3; foo(&x); return x;} fn foo(i64* x) {*x=4;}");
+    TEST(6,  "fn main() i64 { return mix(1,2,3); } fn mix(i8 a, i32 b, i64 c) i64 { return a+b+c; }");
 
     // recursive
     TEST(55,  "fn main() i64 {return sigma(10);} fn sigma(i64 n) i64 {if n<=1 {return n;} return n+sigma(n-1);}");
