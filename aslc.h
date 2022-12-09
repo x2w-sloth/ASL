@@ -67,6 +67,7 @@ struct Path {
 
 typedef enum {
     NT_NUM,
+    NT_BVAL,
     NT_VAR,
     NT_ASSIGN,
     NT_ADD,
@@ -133,6 +134,7 @@ struct Obj {
 
 typedef enum {
     DT_NONE,
+    DT_BOOL,
     DT_INT,
     DT_PTR,
     DT_ARR,

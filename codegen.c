@@ -207,6 +207,11 @@ gen_expr(Node *node)
         case NT_NUM:
             println("  mov  rax, %d", node->ival);
             return;
+        case NT_BVAL:
+            println("  xor  rax, rax");
+            if (node->ival == 1)
+                println("  inc  al");
+            return;
         case NT_VAR:
             gen_addr(node);
             load("rax", node->dt);
@@ -264,6 +269,12 @@ gen_expr(Node *node)
             break;
         case NT_DIV:
         case NT_MOD:
+            if (node->dt->size == 2)
+              println("  cwd");
+            else if (node->dt->size == 4)
+              println("  cdq");
+            else if (node->dt->size == 8)
+              println("  cqo");
             println("  idiv rdi");
             if (node->type == NT_MOD)
                 println("  mov  rax, rdx");

@@ -74,6 +74,7 @@ static Obj *locals;
 static BlockScope *bsc_now;
 static Scope *sc_now, sc_root;
 static const Type type_none = { .type = DT_NONE };
+static const Type type_bool = { .type = DT_BOOL, .size = 1 };
 static const Type type_i8   = { .type = DT_INT, .size = 1 };
 static const Type type_i16  = { .type = DT_INT, .size = 2 };
 static const Type type_i32  = { .type = DT_INT, .size = 4 };
@@ -155,6 +156,18 @@ node_num(int64_t ival)
     Node *node = new_node(NT_NUM);
     node->ival = ival;
 
+    return node;
+}
+
+static Node *
+node_bval(int val)
+{
+    if (val != 0 && val != 1)
+        die("bad boolean value");
+
+    Node *node = new_node(NT_BVAL);
+    node->ival = val;
+    
     return node;
 }
 
@@ -399,7 +412,7 @@ type_array(Type *base, int len)
 static bool
 is_type_name(Token *tok)
 {
-    static const char *names[] = { "i8", "i16", "i32", "i64" };
+    static const char *names[] = { "bool", "i8", "i16", "i32", "i64" };
 
     for (int i = 0; i < COUNT(names); i++)
         if (token_eq(tok, names[i]))
@@ -522,14 +535,16 @@ parse_decl(Token **now)
     return node;
 }
 
-// <declspec> = ("i8" | "i16" | "i32" | "i64") ("*")*
+// <declspec> = ("bool" | "i8" | "i16" | "i32" | "i64") ("*")*
 static Type *
 parse_declspec(Token **now)
 {
     Token *tok = *now;
     Type *dt;
 
-    if (token_consume(&tok, "i8"))
+    if (token_consume(&tok, "bool"))
+        dt = copy_type(&type_bool);
+    else if (token_consume(&tok, "i8"))
         dt = copy_type(&type_i8);
     else if (token_consume(&tok, "i16"))
         dt = copy_type(&type_i16);
@@ -885,6 +900,7 @@ parse_index(Token **now)
 //           | <fn_call>
 //           | <var>
 //           | <num>
+//           | <bval>
 static Node *
 parse_primary(Token **now)
 {
@@ -913,6 +929,11 @@ parse_primary(Token **now)
     {
         *now = tok->next;
         return node_num(tok->ival);
+    }
+    if (tok->type == TT_KEYWORD && (token_eq(tok, "true") || token_eq(tok, "false")))
+    {
+        *now = tok->next;
+        return node_bval(token_eq(tok, "true") ? 1 : 0);
     }
 
     die("bad primary from token %d", tok->type);
@@ -1075,6 +1096,9 @@ sem(Node **node_)
         case NT_NE:
         case NT_LT:
         case NT_LE:
+        case NT_BVAL:
+            node->dt = copy_type(&type_bool);
+            return;
         case NT_NUM:
             node->dt = copy_type(&type_i64);
             return;

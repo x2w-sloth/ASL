@@ -5,6 +5,12 @@ test_locals()
 {
     puts(__FILE__);
 
+    // bool locals
+    TEST(1, "fn main() i64 {return true;}");
+    TEST(0, "fn main() i64 {return false;}");
+    TEST(1, "fn main() i64 {bool b=true; return b;}");
+    TEST(0, "fn main() i64 {bool b=false; return b;}");
+
     // i64 locals
     TEST(3, "fn main() i64 {i64 a=1+2; return a;}");
     TEST(2, "fn main() i64 {i64 a=3, z=5; return z-a;}");
