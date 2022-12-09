@@ -73,6 +73,7 @@ typedef enum {
     NT_SUB,
     NT_MUL,
     NT_DIV,
+    NT_MOD,
     NT_INDEX,
     NT_DEREF,
     NT_ADDR,

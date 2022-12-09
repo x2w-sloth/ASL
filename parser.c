@@ -65,6 +65,7 @@ static void sem_add(Node **node);
 static void sem_sub(Node **node);
 static void sem_mul(Node **node);
 static void sem_div(Node **node);
+static void sem_mod(Node **node);
 static void sem_index(Node **node);
 static void sem_deref(Node **node);
 static void sem_var(Node **node);
@@ -804,7 +805,7 @@ parse_add(Token **now)
     return node;
 }
 
-// <mul> = <unary> ("*" <unary> | "/" <unary>)*
+// <mul> = <unary> ("*" <unary> | "/" <unary> | "%" <unary>)*
 static Node *
 parse_mul(Token **now)
 {
@@ -823,6 +824,12 @@ parse_mul(Token **now)
         {
             tok = tok->next;
             node = new_binary(NT_DIV, node, parse_unary(&tok));
+            continue;
+        }
+        if (token_eq(tok, "%"))
+        {
+            tok = tok->next;
+            node = new_binary(NT_MOD, node, parse_unary(&tok));
             continue;
         }
         break;
@@ -1038,6 +1045,9 @@ sem(Node **node_)
         case NT_DIV:
             sem_div(node_);
             return;
+        case NT_MOD:
+            sem_mod(node_);
+            return;
         case NT_NEG:
             node->dt = node->lch->dt;
             return;
@@ -1170,6 +1180,21 @@ sem_div(Node **node_)
     }
 
     die("bad div between %d and %d", lch->dt->type, rch->dt->type);
+}
+
+static void
+sem_mod(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch, *rch = node->rch;
+
+    if (is_int(lch->dt) && is_int(rch->dt))
+    {
+        node->dt = node->lch->dt;
+        return;
+    }
+
+    die("bad mod between %d and %d", lch->dt->type, rch->dt->type);
 }
 
 static void

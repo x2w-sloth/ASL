@@ -19,6 +19,9 @@ test_expr()
     TEST(9,  "fn main() i64 {return 3*6/2;}");
     TEST(4,  "fn main() i64 {return (1+1)*2;}");
     TEST(10, "fn main() i64 {return (2+3) * ((11-1)/5);}");
+    TEST(7,  "fn main() i64 {return (22 % 3) * 5 + 2;}");
+    TEST(4,  "fn main() i64 {return 50 * 2 % 8;}");
+    TEST(0,  "fn main() i64 {return (8+16+24+8888888) % 8;}");
     TEST(4,  "fn main() i64 {return +5 + -1;}");
     TEST(30, "fn main() i64 {return - - -30 + - -60;}");
     TEST(6,  "fn main() i64 {return (-8 + 5)*(- -2 - 4);}");

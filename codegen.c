@@ -263,7 +263,10 @@ gen_expr(Node *node)
             println("  imul rdi");
             break;
         case NT_DIV:
+        case NT_MOD:
             println("  idiv rdi");
+            if (node->type == NT_MOD)
+                println("  mov  rax, rdx");
             break;
         case NT_EQ:
         case NT_NE:
