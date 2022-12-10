@@ -36,6 +36,7 @@ static Type *type_pointer(Type *base);
 static Type *type_array(Type *base, int len);
 static bool is_type_name(Token *tok);
 static bool is_fn_call(Token *tok);
+static bool is_scope_path(Token *tok);
 static void parse_scope(Token **now);
 static void parse_globals(Token **now);
 static void parse_fn(Token **now);
@@ -58,6 +59,7 @@ static Node *parse_index(Token **now);
 static Node *parse_primary(Token **now);
 static Node *parse_fn_call(Token **now);
 static Node *parse_var(Token **now);
+static Path *parse_scope_path(Token **now);
 static char *get_ident_str(Token *tok);
 static int64_t get_num_ival(Token *tok);
 static void sem(Node **node);
@@ -426,6 +428,12 @@ is_fn_call(Token *tok)
     while (tok->type == TT_IDENT && token_eq(tok->next, ":"))
         tok = tok->next->next;
     return token_eq(tok->next, "(");
+}
+
+static bool
+is_scope_path(Token *tok)
+{
+    return tok->type == TT_IDENT && token_eq(tok->next, ":");
 }
 
 // <scope> = "scope" <ident> "{" (<scope> | <fn> | <globals>)* "}"
@@ -939,23 +947,20 @@ parse_primary(Token **now)
     die("bad primary from token %d", tok->type);
 }
 
-// <fn_call> = (<ident> ":")* <ident> "(" (<assign> ("," <assign>)*)? ")"
+// <fn_call> = (<scope_path>)? <ident> "(" (<assign> ("," <assign>)*)? ")"
 static Node *
 parse_fn_call(Token **now)
 {
     Token *tok = *now;
-    Path dummy_path = {};
-    Path *path = &dummy_path; 
-    Node dummy_node = {};
-    Node *node = &dummy_node;
+    Node dummy= {};
+    Node *node = &dummy;
+    Path *path = NULL;
     const char *fn_name;
 
     // parse fn scopes
-    while (token_eq(tok->next, ":"))
-    {
-        path = path->next = new_path(get_ident_str(tok));
-        tok = tok->next->next;
-    }
+    if (is_scope_path(tok))
+        path = parse_scope_path(&tok);
+
     fn_name = get_ident_str(tok);
     tok = tok->next;
 
@@ -970,31 +975,28 @@ parse_fn_call(Token **now)
     token_assert_consume(&tok, ")");
 
     node = new_node(NT_FN_CALL);
-    node->path = dummy_path.next;
+    node->path = path;
     node->fn_name = fn_name;
-    node->fn_args = dummy_node.next;
+    node->fn_args = dummy.next;
 
     *now = tok;
     return node;
 }
 
-// <var> = (<ident> ":")* <ident>
+// <var> = (<scope_path>)? <ident>
 static Node *
 parse_var(Token **now)
 {
     Token *tok = *now;
     Node *node;
-    Path dummy = {};
-    Path *path = &dummy; 
+    Path *path = NULL;
 
     // parse variable scopes
-    while (token_eq(tok->next, ":"))
-    {
-        path = path->next = new_path(get_ident_str(tok));
-        tok = tok->next->next;
-    }
+    if (is_scope_path(tok))
+        path = parse_scope_path(&tok);
+
     node = node_var(get_ident_str(tok));
-    node->path = dummy.next;
+    node->path = path;
 
     // an unscoped variable can be local var or root global var
     // if we can't find as local var now, find as global var during semantics
@@ -1003,6 +1005,24 @@ parse_var(Token **now)
 
     *now = tok->next;
     return node;
+}
+
+// <scope_path> = (<ident> ":")*
+static Path *
+parse_scope_path(Token **now)
+{
+    Token *tok = *now;
+    Path dummy= {};
+    Path *path = &dummy; 
+
+    while (token_eq(tok->next, ":"))
+    {
+        path = path->next = new_path(get_ident_str(tok));
+        tok = tok->next->next;
+    }
+
+    *now = tok;
+    return dummy.next;
 }
 
 static char *
