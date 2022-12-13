@@ -7,7 +7,6 @@ static Token *new_token(TokenType type);
 static Token *read_num(const char *pos);
 static Token *read_punc(const char *pos);
 static Token *read_ident(const char *pos);
-static bool is_keyword(const Token *tok);
 static bool is_ident1(const char c);
 static bool is_ident2(const char c);
 
@@ -91,6 +90,20 @@ token_appears_before(const Token *tok, const char *pat, const char *end)
     return token_eq(tok, pat);
 }
 
+bool
+is_keyword(const Token *tok)
+{
+    static const char *keywords[] = {
+        "return", "if", "else", "for", "scope", "struct",
+        "true", "false"
+    };
+
+    for (int i = 0; i < COUNT(keywords); i++)
+        if (token_eq(tok, keywords[i]))
+            return true;
+    return false;
+}
+
 static Token *
 new_token(TokenType type)
 {
@@ -157,17 +170,6 @@ read_ident(const char *pos)
     tok->len = c - pos;
     tok->pos = pos;
     return tok;
-}
-
-static bool
-is_keyword(const Token *tok)
-{
-    static const char *keywords[] = { "return", "if", "else", "for", "scope", "true", "false" };
-
-    for (int i = 0; i < COUNT(keywords); i++)
-        if (token_eq(tok, keywords[i]))
-            return true;
-    return false;
 }
 
 static bool

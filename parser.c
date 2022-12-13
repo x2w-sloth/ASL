@@ -16,6 +16,7 @@ static Node *node_num(int64_t ival);
 static Obj *new_obj(ObjType type);
 static Obj *obj_local(Type *dt, const char *name);
 static Obj *obj_global(Type *dt, const char *name);
+static Obj *obj_member(Type *dt, const char *name);
 static Obj *obj_fn(const char *name);
 static void obj_params(Type *param);
 static Path *new_path(const char *name);
@@ -30,14 +31,18 @@ static void block_scope_leave();
 static Obj *find_local(const char *name, size_t len);
 static Obj *find_global(const char *name, size_t len, const Path *path);
 static Obj *find_fn(const char *name, size_t len, const Path *path);
+static Type *find_struct(const char *name, size_t len, const Path *path);
+static Type *find_user_type(const Type *ut);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
 static Type *type_array(Type *base, int len);
 static bool is_type_name(Token *tok);
+static bool is_user_decl(Token *tok);
 static bool is_fn_call(Token *tok);
 static bool is_scope_path(Token *tok);
 static void parse_scope(Token **now);
+static void parse_struct(Token **now);
 static void parse_globals(Token **now);
 static void parse_fn(Token **now);
 static Node *parse_decl(Token **now);
@@ -55,7 +60,9 @@ static Node *parse_cmp(Token **now);
 static Node *parse_add(Token **now);
 static Node *parse_mul(Token **now);
 static Node *parse_unary(Token **now);
-static Node *parse_index(Token **now);
+static Node *parse_postfix(Token **now);
+static Node *parse_index(Token **now, Node *primary);
+static Node *parse_member(Token **now, Node *primary);
 static Node *parse_primary(Token **now);
 static Node *parse_fn_call(Token **now);
 static Node *parse_var(Token **now);
@@ -69,12 +76,15 @@ static void sem_mul(Node **node);
 static void sem_div(Node **node);
 static void sem_mod(Node **node);
 static void sem_index(Node **node);
+static void sem_member(Node **node);
 static void sem_deref(Node **node);
 static void sem_var(Node **node);
 
 static Obj *locals;
+static Obj *members;
 static BlockScope *bsc_now;
 static Scope *sc_now, sc_root;
+static const Type type_user_def = { .type = DT_USER_DEF };
 static const Type type_none = { .type = DT_NONE };
 static const Type type_bool = { .type = DT_BOOL, .size = 1 };
 static const Type type_i8   = { .type = DT_INT, .size = 1 };
@@ -93,6 +103,8 @@ parse(Token *tok)
     {
         if (token_eq(tok, "scope"))
             parse_scope(&tok);
+        else if (token_eq(tok, "struct"))
+            parse_struct(&tok);
         else if (token_eq(tok, "fn"))
             parse_fn(&tok);
         else
@@ -216,6 +228,19 @@ obj_global(Type *dt, const char *name)
 }
 
 static Obj *
+obj_member(Type *dt, const char *name)
+{
+    Obj *obj = new_obj(OT_MEMBER);
+
+    obj->dt = dt;
+    obj->name = name;
+    obj->next = members;
+    members = obj;
+
+    return obj;
+}
+
+static Obj *
 obj_fn(const char *name)
 {
     Obj *obj = new_obj(OT_FN);
@@ -287,7 +312,12 @@ scope_semantics(Scope *sc)
         return;
 
     for (Obj *fn = sc->fns; fn; fn = fn->next)
+    {
+        for (Obj *local = fn->locals; local; local = local->next)
+            if (local->dt->type == DT_USER_DEF)
+                local->dt = find_user_type(local->dt);
         sem(&fn->body);
+    }
 
     sc = sc->children;
     for (Scope *s = sc; s; s = s->next)
@@ -372,6 +402,31 @@ find_fn(const char *name, size_t len, const Path *path)
 }
 
 static Type *
+find_struct(const char *name, size_t len, const Path *path)
+{
+    Scope *sc = scope_lookup(path);
+
+    for (Type *st = sc->structs; st; st = st->next)
+        if (!strncmp(name, st->name, len))
+            return st;
+    return NULL;
+}
+
+static Type *
+find_user_type(const Type *ut)
+{
+    Type *t;
+
+    if (ut->type != DT_USER_DEF)
+        die("not a user defined type");
+
+    if ((t = find_struct(ut->name, strlen(ut->name), ut->path)))
+        return t;
+
+    die("user defined type %s not declared", ut->name);
+}
+
+static Type *
 new_type(DataType type)
 {
     Type *dt = xmalloc(sizeof(Type));
@@ -423,6 +478,14 @@ is_type_name(Token *tok)
 }
 
 static bool
+is_user_decl(Token *tok)
+{
+    while (is_scope_path(tok))
+        tok = tok->next->next;
+    return tok->type == TT_IDENT && tok->next->type == TT_IDENT;
+}
+
+static bool
 is_fn_call(Token *tok)
 {
     while (tok->type == TT_IDENT && token_eq(tok->next, ":"))
@@ -454,6 +517,8 @@ parse_scope(Token **now)
     {
         if (token_eq(tok, "scope"))
             parse_scope(&tok);
+        else if (token_eq(tok, "struct"))
+            parse_struct(&tok);
         else if (token_eq(tok, "fn"))
             parse_fn(&tok);
         else
@@ -464,6 +529,45 @@ parse_scope(Token **now)
 
     *now = tok;
     return;
+}
+
+// <struct> = "struct" <ident> "{" (<declspec> <declarator>)* "}"
+static void
+parse_struct(Token **now)
+{
+    Token *tok = *now;
+    Type *st, *mt;
+
+    token_assert_consume(&tok, "struct");
+
+    st = new_type(DT_STRUCT);
+    st->name = get_ident_str(tok);
+    tok = tok->next;
+
+    members = NULL;
+
+    token_assert_consume(&tok, "{");
+    while (!token_eq(tok, "}"))
+    {
+        mt = parse_declspec(&tok);
+        parse_declarator(&tok, mt, OT_MEMBER);
+    }
+
+    // assign member offsets
+    int offset = 0;
+    for (Obj *mem = members; mem; mem = mem->next)
+    {
+        mem->mem_off = offset;
+        offset += mem->dt->size;
+    }
+    st->members = members;
+    st->size = offset;
+
+    // register struct under current scope
+    st->next = sc_now->structs;
+    sc_now->structs = st;
+
+    *now = tok->next;
 }
 
 // <globals> = <declspec> <declarator>
@@ -536,6 +640,7 @@ parse_decl(Token **now)
     Token *tok = *now;
     Type *decl_dt = parse_declspec(&tok);
 
+    // declare local variables in block scope
     Node *node = new_node(NT_BLOCK_STMT);
     node->block = parse_declarator(&tok, decl_dt, OT_LOCAL);
 
@@ -543,7 +648,7 @@ parse_decl(Token **now)
     return node;
 }
 
-// <declspec> = ("bool" | "i8" | "i16" | "i32" | "i64") ("*")*
+// <declspec> = ("bool" | "i8" | "i16" | "i32" | "i64" | <user_decl>) ("*")*
 static Type *
 parse_declspec(Token **now)
 {
@@ -561,7 +666,14 @@ parse_declspec(Token **now)
     else if (token_consume(&tok, "i64"))
         dt = copy_type(&type_i64);
     else
-        die("unknown type");
+    {
+        // user declared type, validated during semantics
+        dt = copy_type(&type_user_def);
+        if (is_scope_path(tok))
+            dt->path = parse_scope_path(&tok);
+        dt->name = get_ident_str(tok);
+        tok = tok->next;
+    }
 
     while (token_consume(&tok, "*"))
         dt = type_pointer(dt);
@@ -614,6 +726,8 @@ parse_declarator(Token **now, Type *dt, ObjType ot)
         }
         else if (ot == OT_GLOBAL) // declare global variable
             obj_global(dt, name);
+        else if (ot == OT_MEMBER) // declare struct member
+            obj_member(dt, name);
         else
             die("can not declare object type %d", ot);
     }
@@ -671,7 +785,7 @@ parse_block_stmt(Token **now)
 
     while (!token_eq(tok, "}"))
     {
-        if (is_type_name(tok))
+        if (is_type_name(tok) || is_user_decl(tok))
             node = node->next = parse_decl(&tok);
         else
             node = node->next = parse_stmt(&tok);
@@ -863,7 +977,7 @@ parse_mul(Token **now)
 }
 
 // <unary> = ("+" | "-" | "*" | "&") <unary>
-//         | <index>
+//         | <postfix>
 static Node *
 parse_unary(Token **now)
 {
@@ -879,32 +993,72 @@ parse_unary(Token **now)
     else if (token_consume(&tok, "&"))
         node = new_unary(NT_ADDR, parse_unary(&tok));
     else
-        node = parse_index(&tok);
+        node = parse_postfix(&tok);
 
     *now = tok;
     return node;
 }
 
-// <index> = <primary> ("[" <expr> "]")*
+// <postfix> = <primary> (<index> | <member>)*
 static Node *
-parse_index(Token **now)
+parse_postfix(Token **now)
 {
     Token *tok = *now;
     Node *node = parse_primary(&tok);
-    Node *expr;
 
-    while (token_consume(&tok, "["))
+    for (;;)
     {
-        expr = parse_expr(&tok);
-        token_assert_consume(&tok, "]");
-        node = new_binary(NT_INDEX, node, expr);
+        if (token_eq(tok, "["))
+        {
+            node = parse_index(&tok, node);
+            continue;
+        }
+        if (token_eq(tok, "."))
+        {
+            node = parse_member(&tok, node);
+            continue;
+        }
+        break;
     }
 
     *now = tok;
     return node;
 }
 
+// <index> = "[" <expr> "]"
+static Node *
+parse_index(Token **now, Node *primary)
+{
+    Token *tok = *now;
+    Node *node = primary;
+    Node *expr;
+
+    token_assert_consume(&tok, "[");
+    expr = parse_expr(&tok);
+    token_assert_consume(&tok, "]");
+    node = new_binary(NT_INDEX, node, expr);
+
+    *now = tok;
+    return node;
+}
+
+// <member> = "." <ident>
+static Node *
+parse_member(Token **now, Node *primary)
+{
+    Token *tok = *now;
+    Node *node = primary;
+
+    token_assert_consume(&tok, ".");
+    node = new_unary(NT_MEMBER, node);
+    node->mem_name = get_ident_str(tok);
+
+    *now = tok->next;
+    return node;
+}
+
 // <primary> = "(" <expr> ")"
+//           | <member>
 //           | <fn_call>
 //           | <var>
 //           | <num>
@@ -1100,6 +1254,9 @@ sem(Node **node_)
         case NT_INDEX:
             sem_index(node_);
             return;
+        case NT_MEMBER:
+            sem_member(node_);
+            return;
         case NT_DEREF:
             sem_deref(node_);
             return;
@@ -1260,6 +1417,30 @@ sem_index(Node **node_)
 }
 
 static void
+sem_member(Node **node_)
+{
+    Node *node = *node_;
+    Node *lch = node->lch;
+
+    // find struct type by path and name
+    if (lch->dt->type != DT_STRUCT)
+        die("failed to access member of non-struct type %d", lch->dt->type);
+
+    // find member of struct
+    node->mem = NULL;
+    for (Obj *mem = lch->dt->members; mem; mem = mem->next)
+        if (!strcmp(node->mem_name, mem->name))
+        {
+            node->mem = mem;
+            break;
+        }
+    if (!node->mem)
+        die("failed to access member %s of struct %s", node->mem_name, lch->dt->name);
+
+    node->dt = node->mem->dt;
+}
+
+static void
 sem_deref(Node **node_)
 {
     Node *node = *node_;
@@ -1294,6 +1475,10 @@ sem_var(Node **node_)
         node->var = var;
         node->dt = var->dt;
     }
+
+    // deduce user defined type now
+    if (node->dt->type == DT_USER_DEF)
+        node->dt = find_user_type(node->dt);
 
     // array variable is converted into a pointer to it's first element
     if (is_arr(node->dt))

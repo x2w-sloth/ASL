@@ -44,6 +44,7 @@ void token_assert(const Token *tok, const char *str);
 bool token_consume(Token **tok, const char *str);
 void token_assert_consume(Token **tok, const char *str);
 bool token_appears_before(const Token *tok, const char *pat, const char *end);
+bool is_keyword(const Token *tok);
 
 // parser.c
 
@@ -57,6 +58,7 @@ struct Scope {
     Scope *parent, *children, *next;
     const char *name;
     Obj *globals, *fns;
+    Type *structs;
 };
 
 // scope lookup path
@@ -88,6 +90,7 @@ typedef enum {
     NT_EXPR_STMT,
     NT_IF_STMT,
     NT_FOR_STMT,
+    NT_MEMBER,
     NT_FN_CALL,
 } NodeType;
 
@@ -109,11 +112,15 @@ struct Node {
     // function call
     const char *fn_name;
     Node *fn_args;
+    // struct member
+    const char *mem_name;
+    Obj *mem;
 };
 
 typedef enum {
     OT_LOCAL,    // stack automatic variable
     OT_GLOBAL,   // global variable
+    OT_MEMBER,   // struct member
     OT_FN,       // function
 } ObjType;
 
@@ -130,6 +137,8 @@ struct Obj {
     int stack_size;
     Node *body;
     Obj *params, *locals;
+    // struct member
+    int mem_off;
 };
 
 typedef enum {
@@ -139,11 +148,14 @@ typedef enum {
     DT_PTR,
     DT_ARR,
     DT_FN,
+    DT_USER_DEF,
+    DT_STRUCT,
 } DataType;
 
 struct Type {
     DataType type;
     Type *next;
+    Path *path;
     const char *name;
     int size;
     // integer type, float type
@@ -154,6 +166,8 @@ struct Type {
     // function type
     Type *params;
     Type *ret;
+    // struct type
+    Obj *members;
 };
 
 Scope *parse(Token *tok);

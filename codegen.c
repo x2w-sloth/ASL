@@ -213,6 +213,7 @@ gen_expr(Node *node)
                 println("  inc  al");
             return;
         case NT_VAR:
+        case NT_MEMBER:
             gen_addr(node);
             load("rax", node->dt);
             return;
@@ -247,8 +248,18 @@ gen_expr(Node *node)
             gen_expr(node->lch);
             println("  neg  rax");
             return;
-        default:
+        case NT_EQ:
+        case NT_NE:
+        case NT_LT:
+        case NT_LE:
+        case NT_ADD:
+        case NT_SUB:
+        case NT_MUL:
+        case NT_DIV:
+        case NT_MOD:
             break;
+        default:
+            die("bad expr unary node %d", node->type);
     }
 
     gen_expr(node->rch);
@@ -313,6 +324,10 @@ gen_addr(Node *node)
             break;
         case NT_DEREF:
             gen_expr(node->lch);
+            break;
+        case NT_MEMBER:
+            gen_addr(node->lch);
+            println("  add  rax, %d", node->mem->mem_off);
             break;
         default:
             die("bad addr node %d", node->type);
