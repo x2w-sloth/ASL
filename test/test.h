@@ -14,6 +14,7 @@ bool test_expr();
 bool test_flow();
 bool test_locals();
 bool test_arrays();
+bool test_structs();
 bool test_globals();
 bool test_scopes();
 bool test_pointer();

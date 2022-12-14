@@ -67,6 +67,7 @@ main()
         test_flow,
         test_locals,
         test_arrays,
+        test_structs,
         test_globals,
         test_scopes,
         test_pointer,

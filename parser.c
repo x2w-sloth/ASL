@@ -33,6 +33,7 @@ static Obj *find_global(const char *name, size_t len, const Path *path);
 static Obj *find_fn(const char *name, size_t len, const Path *path);
 static Type *find_struct(const char *name, size_t len, const Path *path);
 static Type *find_user_type(const Type *ut);
+static void deduce_user_type(Type **dt);
 static Type *new_type(DataType type);
 static Type *copy_type(const Type *dt);
 static Type *type_pointer(Type *base);
@@ -311,11 +312,25 @@ scope_semantics(Scope *sc)
     if (!sc)
         return;
 
+    // calculate struct size and assign member offsets
+    // if a struct has members of user defined types, deduce it now
+    for (Type *st = sc->structs; st; st = st->next)
+    {
+        int offset = 0;
+        for (Obj *mem = st->members; mem; mem = mem->next)
+        {
+            deduce_user_type(&mem->dt);
+            mem->mem_off = offset;
+            offset += mem->dt->size;
+        }
+        st->size = offset;
+    }
+
     for (Obj *fn = sc->fns; fn; fn = fn->next)
     {
+        // if a local variable is user defined type, deduce it now
         for (Obj *local = fn->locals; local; local = local->next)
-            if (local->dt->type == DT_USER_DEF)
-                local->dt = find_user_type(local->dt);
+            deduce_user_type(&local->dt);
         sem(&fn->body);
     }
 
@@ -424,6 +439,18 @@ find_user_type(const Type *ut)
         return t;
 
     die("user defined type %s not declared", ut->name);
+}
+
+static void
+deduce_user_type(Type **dt_)
+{
+    Type *dt = *dt_;
+
+    if (dt->type == DT_USER_DEF)
+        *dt_ = find_user_type(dt);
+
+    if (dt->type == DT_ARR && dt->base->type == DT_USER_DEF)
+        *dt_ = type_array(find_user_type(dt->base), dt->arr_len);
 }
 
 static Type *
@@ -553,17 +580,8 @@ parse_struct(Token **now)
         parse_declarator(&tok, mt, OT_MEMBER);
     }
 
-    // assign member offsets
-    int offset = 0;
-    for (Obj *mem = members; mem; mem = mem->next)
-    {
-        mem->mem_off = offset;
-        offset += mem->dt->size;
-    }
-    st->members = members;
-    st->size = offset;
-
     // register struct under current scope
+    st->members = members;
     st->next = sc_now->structs;
     sc_now->structs = st;
 
@@ -1438,6 +1456,13 @@ sem_member(Node **node_)
         die("failed to access member %s of struct %s", node->mem_name, lch->dt->name);
 
     node->dt = node->mem->dt;
+
+    if (is_arr(node->dt))
+    {
+        node = new_unary(NT_ADDR, node);
+        sem(&node);
+        *node_ = node;
+    }
 }
 
 static void
@@ -1477,8 +1502,7 @@ sem_var(Node **node_)
     }
 
     // deduce user defined type now
-    if (node->dt->type == DT_USER_DEF)
-        node->dt = find_user_type(node->dt);
+    deduce_user_type(&node->dt);
 
     // array variable is converted into a pointer to it's first element
     if (is_arr(node->dt))
