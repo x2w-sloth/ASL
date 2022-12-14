@@ -18,6 +18,7 @@ syn region aslStringLiteral start=+"+ end=+"+ skip=+\\"+
 
 " asl declaration introducers
 syn keyword aslScopeDeclaration scope
+syn keyword aslStructDeclaration struct
 syn keyword aslFunctionDeclaration fn
 syn keyword aslAliasDeclaration alias nextgroup=aslNominalType skipwhite
 
@@ -43,6 +44,7 @@ hi def link aslNumber Number
 hi def link aslStringLiteral aslString
 hi def link aslString String
 hi def link aslScopeDeclaration aslDeclaration
+hi def link aslStructDeclaration aslDeclaration
 hi def link aslFunctionDeclaration aslDeclaration
 hi def link aslAliasDeclaration aslDeclaration
 hi def link aslDeclaration Structure

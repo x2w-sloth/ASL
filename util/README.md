@@ -8,7 +8,7 @@ Syntax highlighting is available for vim and neovim.
 
 ### Vim Users
 
-From the current directory `util/vim`, please run the following commands to install the syntax file.
+From the current directory `util/`, please run the following commands to install the syntax file.
 
 ```bash
 mkdir -p ~/.vim/syntax && cp vim/syntax/asl.vim ~/.vim/syntax/
